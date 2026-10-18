@@ -172,7 +172,7 @@ async function render(format) {
 
   const tall = H > W * 1.2;
   const baseDist = await p.evaluate(() => window.fh.view.camDist);
-  const fitDist = tall ? baseDist * 0.78 : baseDist * 0.72;
+  const fitDist = tall ? baseDist * 0.78 : W === H ? baseDist * 0.98 : baseDist * 0.72;
 
   // --- Shot 1-4: one grey-shale block, start to finish.
   await p.evaluate(() => window.__promo.load('wheeler', 5));
@@ -214,6 +214,8 @@ async function render(format) {
   const mp4 = `${OUT}fossil-hunter-${format}.mp4`;
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', `${dir}f%05d.png`,
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4]);
+  // A cover image: the named reveal.
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${dir}f${String(Math.round(13 * FPS)).padStart(5, '0')}.png`, '-q:v', '2', `${OUT}fossil-hunter-${format}-cover.jpg`]);
   console.log(format, `${frame} frames →`, mp4);
 }
 
