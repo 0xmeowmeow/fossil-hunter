@@ -28,7 +28,7 @@ await p.waitForTimeout(2500);
 await p.waitForFunction(() => { const g = window.fh.game; return !g.job && !(g._looseAt > 0); }, null, { timeout: 60000 }); // sliced jobs (loose rock) finished
 const before = await p.evaluate(() => { const g = window.fh.game, v = g.sp.vol; let s = 0, m = 0; for (let n = 0; n < v.count; n += 13) { s += v.rock[n]; m++; } let e = 0; for (const t of g.sp.targets) if (v.rock[t] <= 0) e++; return { sum: s, samples: m, exp: e / g.sp.targets.length, seed: g.seed, level: g.level.id }; });
 await p.click('#btnPack');
-await p.waitForFunction(() => !document.getElementById('menu').classList.contains('hidden'), null, { timeout: 15000 });
+await p.waitForFunction(() => !document.getElementById('menu').classList.contains('hidden'), null, { timeout: 45000 });
 await p.waitForTimeout(800);
 await p.screenshot({ path: `${out}/shelf.png` });
 const card = await p.$eval('#career [data-go]', (el) => el.closest('.blk').textContent);

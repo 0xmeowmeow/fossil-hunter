@@ -7,6 +7,8 @@ import { meshChunk, meshGrid } from './mesher.js';
 import { showcaseGroup } from './showcase.js';
 import { buildFine, shadeFine } from './finefossil.js';
 import { makeMarks } from './marks.js';
+import { BenchSet } from './set.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // Fine-shell resolution: 2x the rock grid on desktop, 1.5x on touch devices and headsets.
 export const LITE = /Mobi|Android|iPad|Quest|OculusBrowser/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
@@ -174,6 +176,13 @@ export function specimenMaterial(uniforms) {
   return m;
 }
 
+/** Is this WebGL running on the CPU (SwiftShader, llvmpipe)? */
+function softwareGL(r) {
+  const gl = r.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+  return /swiftshader|llvmpipe|software/i.test(name);
+}
+
 export class View {
   constructor(canvas) {
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true }));
@@ -190,7 +199,17 @@ export class View {
     r.xr.enabled = true;
 
     const s = (this.scene = new THREE.Scene());
-    s.background = new THREE.Color(0x17171a);
+    s.background = new THREE.Color(0x0e0c0a);
+    // A dim room to reflect: gloss on calcite, pyrite and opal reads as real lustre.
+    // Software GL (no GPU) can't afford the prefiltering, and has crashed on it: skip it there.
+    if (!softwareGL(r)) {
+      const pm = new THREE.PMREMGenerator(r);
+      s.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+      s.environmentIntensity = 0.16;
+      pm.dispose();
+    }
+    // The workshop falls off into the dark beyond the lamp (bench only; see render()).
+    this.fog = new THREE.Fog(0x0e0c0a, 6, 16);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
     this.camDist = 2.4;
     this.camElev = 0.95; // radians above horizontal
@@ -206,14 +225,15 @@ export class View {
     this.root.add(this.rot);
     s.add(this.root);
 
-    s.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a241e, 0.4));
+    s.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a241e, 0.16));
     // Movable raking key light: swing it to read relief and lustre, as under a lamp.
     const key = (this.key = new THREE.DirectionalLight(0xfff1dc, 3.4));
     key.castShadow = true;
     key.shadow.mapSize.setScalar(LITE ? 1024 : 2048);
     const sc = key.shadow.camera;
-    sc.left = sc.bottom = -1.3;
-    sc.right = sc.top = 1.3;
+    // Wide enough for the block's shadow across the bench and the tools beside it.
+    sc.left = sc.bottom = -3.2;
+    sc.right = sc.top = 3.2;
     sc.near = 0.1;
     sc.far = 8;
     key.shadow.bias = -0.0004;
@@ -230,13 +250,22 @@ export class View {
       uOpalA: { value: new THREE.Vector4(0.02, 0.06, 0.2, 0) }, uOpalB: { value: new THREE.Vector4(440, 600, 0.1, 1) },
       uCamObj: { value: new THREE.Vector3() }, uKeyObj: { value: new THREE.Vector3(0, 0, 1) }, uSkyObj: { value: new THREE.Vector3(0, 0, 1) } };
     this.material = specimenMaterial(this.uniforms);
+    // Spoil is a coarse mesh that can be seen from any side once it's lying on the bench.
+    this.debrisMaterial = specimenMaterial(this.uniforms);
+    this.debrisMaterial.side = THREE.DoubleSide;
     this.chunks = new Map();
 
+    // The bench around the block (set.js).
+    this.set = new BenchSet();
+    s.add(this.set.group);
+    this.setQuat = new THREE.Quaternion(); // the bench's facing (a headset turns it to the player)
+    this._corner = new THREE.Vector3();
     this._initTool();
     this._initChips();
     this._initChisel();
     this.pulses = [];
     this.debris = [];
+    this.spoil = [];
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -327,6 +356,7 @@ export class View {
       f.mesh.geometry.dispose();
     }
     this.fine = new Map();
+    this.clearSpoil();
     this.sp = sp;
     this.setOpal(sp.opal);
     // Marks people left on the rock, drawn once fonts are in.
@@ -342,6 +372,8 @@ export class View {
     const c = [0, 1, 2].map((i) => (sp.bLo[i] + sp.bHi[i]) / 2);
     this.off.position.set(-c[0], -c[1], -c[2]);
     this.root.quaternion.identity();
+    // Volume x, y become world x, -z (the volume is z-up).
+    this.set.fit(sp.level, sp.seed, [(sp.bHi[0] - sp.bLo[0]) / 2, (sp.bHi[1] - sp.bLo[1]) / 2]);
     this._fit();
     for (let z = 0; z < v.cz; z++) for (let y = 0; y < v.cy; y++) for (let x = 0; x < v.cx; x++) this._remesh(x + y * v.cx + z * v.cx * v.cy);
     v.dirty.clear();
@@ -419,7 +451,7 @@ export class View {
     if (data.extra) g.setAttribute('extra', new THREE.BufferAttribute(data.extra, 3));
     g.setIndex(new THREE.BufferAttribute(data.idx, 1));
     g.computeBoundingSphere();
-    const m = new THREE.Mesh(g, this.material);
+    const m = new THREE.Mesh(g, this.debrisMaterial);
     m.castShadow = m.receiveShadow = true;
     this.off.add(m);
     this.chunks.set(key, m);
@@ -602,7 +634,7 @@ export class View {
     const N = (this.chipN = 700);
     const g = new THREE.BufferGeometry();
     const p0 = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) p0[i * 3 + 2] = -1000; // parked out of sight until spawned
+    for (let i = 0; i < N; i++) p0[i * 3 + 1] = -1000; // parked out of sight until spawned
     g.setAttribute('position', new THREE.BufferAttribute(p0, 3));
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
     this.chipVel = new Float32Array(N * 3);
@@ -610,26 +642,46 @@ export class View {
     this.chipNext = 0;
     this.chips = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.012, vertexColors: true, transparent: true, opacity: 0.9, sizeAttenuation: true }));
     this.chips.frustumCulled = false;
-    this.off.add(this.chips);
+    // Chips live in the bench's frame, so they can land on it and stay (see update()).
+    this.set.group.add(this.chips);
+    this._v3 = new THREE.Vector3();
+    this._q = new THREE.Quaternion();
+    this._q2 = new THREE.Quaternion();
+  }
+
+  /** A point in the block's local frame, into the bench's frame. */
+  _toSet(p, out) {
+    this.root.updateMatrixWorld();
+    return this.set.group.worldToLocal(this.off.localToWorld(out.set(p[0], p[1], p[2])));
+  }
+
+  /** A direction (with its length) from the block's frame into the bench's frame. */
+  _dirToSet(v) {
+    this.off.getWorldQuaternion(this._q);
+    this.set.group.getWorldQuaternion(this._q2);
+    return v.applyQuaternion(this._q).applyQuaternion(this._q2.invert());
   }
 
   /** Burst of chips at local points; colour from the specimen's matrix colour there. */
   spawnChips(points, perPoint = 6) {
     if (!this.sp || !points.length) return;
     const pos = this.chips.geometry.attributes.position, col = this.chips.geometry.attributes.color;
-    const tmp = [0, 0, 0];
+    const tmp = [0, 0, 0], w = this._v3, vel = new THREE.Vector3();
     for (const p of points.slice(-40)) {
       this.sp.rockColour(p[0], p[1], p[2], 1, tmp);
+      this._toSet(p, w);
       for (let k = 0; k < perPoint; k++) {
         const i = this.chipNext;
         this.chipNext = (this.chipNext + 1) % this.chipN;
-        pos.setXYZ(i, p[0], p[1], p[2]);
+        pos.setXYZ(i, w.x, w.y, w.z);
         const f = 0.8 + 0.4 * Math.random();
         col.setXYZ(i, tmp[0] * f, tmp[1] * f, tmp[2] * f);
-        this.chipVel[i * 3] = (Math.random() - 0.5) * 0.5;
-        this.chipVel[i * 3 + 1] = (Math.random() - 0.5) * 0.5;
-        this.chipVel[i * 3 + 2] = 0.2 + Math.random() * 0.4;
-        this.chipLife[i] = 0.7 + Math.random() * 0.7;
+        // Away from the surface (block z is up), then into the bench's frame.
+        this._dirToSet(vel.set((Math.random() - 0.5) * 1.8, (Math.random() - 0.5) * 1.8, 0.4 + Math.random() * 0.8));
+        this.chipVel[i * 3] = vel.x;
+        this.chipVel[i * 3 + 1] = vel.y;
+        this.chipVel[i * 3 + 2] = vel.z;
+        this.chipLife[i] = 1; // falling; set to -1 once it has landed
       }
     }
     col.needsUpdate = true;
@@ -774,17 +826,38 @@ export class View {
     g.setIndex(new THREE.BufferAttribute(data.idx, 1));
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, this.material);
-    m.castShadow = true;
+    m.castShadow = m.receiveShadow = true;
     m.position.set(cx, cy, cz);
     this.off.add(m);
+    // It tumbles in the bench's frame, lands, and stays on the bench as spoil.
+    this.root.updateMatrixWorld();
+    this.set.group.attach(m);
+    g.computeBoundingSphere();
     const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    this.debris.push({ m, v: new THREE.Vector3(...vel), axis, w: spin, t: 0 });
-    if (this.debris.length > 12) this._dropDebris(this.debris.shift());
+    this.debris.push({ m, v: this._dirToSet(new THREE.Vector3(...vel)), axis, w: spin, t: 0, r: g.boundingSphere.radius });
+    if (this.debris.length > 12) this._settle(this.debris.shift());
   }
 
   _dropDebris(d) {
-    this.off.remove(d.m);
+    d.m.parent?.remove(d.m);
     d.m.geometry.dispose();
+  }
+
+  /** A piece comes to rest: it joins the spoil on the bench (the oldest go to make room). */
+  _settle(d) {
+    this.spoil.push(d);
+    if (this.spoil.length > 40) this._dropDebris(this.spoil.shift());
+    this.shadowDirty = true;
+  }
+
+  /** Sweep the bench clean (a new block). */
+  clearSpoil() {
+    for (const d of [...this.debris, ...this.spoil]) this._dropDebris(d);
+    this.debris = [];
+    this.spoil = [];
+    const pos = this.chips.geometry.attributes.position;
+    for (let i = 0; i < this.chipN; i++) { this.chipLife[i] = 0; pos.setXYZ(i, 0, -1000, 0); }
+    pos.needsUpdate = true;
   }
 
   /** A brief expanding ring where the shell lost integrity. */
@@ -797,17 +870,42 @@ export class View {
   }
 
   update(dt) {
-    // Chips and debris fall under world gravity (local frame turns with the specimen).
-    const gl = this.dirToLocal(new THREE.Vector3(0, -1, 0));
+    // Debris and chips fall in the bench's frame (y up), bounce, and come to rest on the
+    // sandbag or the bench top. A little slower than real gravity, so you see them go.
+    const G = 7, set = this.set;
     for (const d of this.debris) {
       d.t += dt;
-      d.v.addScaledVector(gl, 2.2 * dt);
+      d.v.y -= G * dt;
       d.m.position.addScaledVector(d.v, dt);
       d.m.rotateOnAxis(d.axis, d.w * dt);
+      const p = d.m.position, bb = this.blockBox;
+      const over = bb && p.x > bb.x[0] && p.x < bb.x[1] && p.z > bb.z[0] && p.z < bb.z[1];
+      if (over && p.y > bb.top - d.r) {
+        // On top of the block: it rides there and slides off the nearest edge.
+        if (p.y < bb.top + d.r * 0.2) {
+          p.y = bb.top + d.r * 0.2;
+          d.v.y = Math.max(0, d.v.y);
+          const ex = Math.min(p.x - bb.x[0], bb.x[1] - p.x), ez = Math.min(p.z - bb.z[0], bb.z[1] - p.z);
+          if (ex < ez) d.v.x += (p.x > (bb.x[0] + bb.x[1]) / 2 ? 1 : -1) * 6 * dt;
+          else d.v.z += (p.z > (bb.z[0] + bb.z[1]) / 2 ? 1 : -1) * 6 * dt;
+        }
+        continue;
+      }
+      const floor = set.floorAt(p.x, p.z) + d.r * 0.35;
+      if (p.y < floor) {
+        p.y = floor;
+        d.v.y = Math.abs(d.v.y) * 0.25;
+        d.v.x *= 0.55;
+        d.v.z *= 0.55;
+        d.w *= 0.5;
+        if (d.v.length() < 0.35) d.rest = true;
+      }
+      if (p.y < -20) d.gone = true; // fell off the edge of a headset's table
     }
     this.debris = this.debris.filter((d) => {
-      if (d.t < 2.6) return true;
-      this._dropDebris(d);
+      if (!d.rest && !d.gone && d.t < 6) return true;
+      if (d.gone) this._dropDebris(d);
+      else this._settle(d);
       return false;
     });
     const pos = this.chips.geometry.attributes.position;
@@ -815,13 +913,23 @@ export class View {
     for (let i = 0; i < this.chipN; i++) {
       if (this.chipLife[i] <= 0) continue;
       any = true;
-      this.chipLife[i] -= dt;
       const v = this.chipVel;
-      v[i * 3] += gl.x * 2.5 * dt;
-      v[i * 3 + 1] += gl.y * 2.5 * dt;
-      v[i * 3 + 2] += gl.z * 2.5 * dt;
-      pos.setXYZ(i, pos.getX(i) + v[i * 3] * dt, pos.getY(i) + v[i * 3 + 1] * dt, pos.getZ(i) + v[i * 3 + 2] * dt);
-      if (this.chipLife[i] <= 0) pos.setXYZ(i, 0, 0, -1000);
+      v[i * 3 + 1] -= G * dt;
+      let x = pos.getX(i) + v[i * 3] * dt, y = pos.getY(i) + v[i * 3 + 1] * dt, z = pos.getZ(i) + v[i * 3 + 2] * dt;
+      const bb = this.blockBox;
+      if (bb && y < bb.top && x > bb.x[0] && x < bb.x[1] && z > bb.z[0] && z < bb.z[1]) {
+        // Landed on (or in) the block: brushed away, gone.
+        this.chipLife[i] = 0;
+        pos.setXYZ(i, 0, -1000, 0);
+        continue;
+      }
+      const floor = set.floorAt(x, z) + 0.004;
+      if (y < floor) {
+        // Grit doesn't bounce much: it skids and stops, and stays where it fell.
+        y = floor;
+        this.chipLife[i] = -1;
+      }
+      pos.setXYZ(i, x, y, z);
     }
     if (any) pos.needsUpdate = true;
     for (const p of this.pulses) {
@@ -899,8 +1007,43 @@ export class View {
     this.uniforms.uOpalB.value.set(o.lmin, o.lmax, (o.tone - 1) / 6, [0, 2.2, 1.7, 1.3, 0.95, 0.65][o.bright]);
   }
 
+  /** Keep the bench under the block however it's turned, and drift the dust. */
+  _stage() {
+    const set = this.set, xr = this.renderer.xr.isPresenting;
+    const on = this.root.visible && !this.showcaseOn && !!this.sp;
+    set.group.visible = on;
+    set.props.visible = !xr;
+    this.scene.fog = on && !xr ? this.fog : null;
+    if (!on) return;
+    // The lowest corner of the block's box, as the block is turned now.
+    const sp = this.sp, q = this.root.quaternion, c = this._corner;
+    let minY = Infinity, maxY = -Infinity;
+    const bx = [Infinity, -Infinity], bz = [Infinity, -Infinity];
+    for (let i = 0; i < 8; i++) {
+      const x = (i & 1 ? sp.bHi[0] : sp.bLo[0]) + this.off.position.x;
+      const y = (i & 2 ? sp.bHi[1] : sp.bLo[1]) + this.off.position.y;
+      const z = (i & 4 ? sp.bHi[2] : sp.bLo[2]) + this.off.position.z;
+      c.set(x, z, -y).applyQuaternion(q); // rot: volume z-up -> y-up
+      minY = Math.min(minY, c.y);
+      maxY = Math.max(maxY, c.y);
+      bx[0] = Math.min(bx[0], c.x); bx[1] = Math.max(bx[1], c.x);
+      bz[0] = Math.min(bz[0], c.z); bz[1] = Math.max(bz[1], c.z);
+    }
+    // The block's box in the bench's frame, for spoil to land on and slide off.
+    this.blockBox = { x: bx, z: bz, top: set.bagTop + maxY - minY };
+    const s = this.root.scale.x;
+    set.group.position.copy(this.root.position);
+    set.group.position.y += (minY - set.bagTop) * s;
+    set.group.scale.setScalar(s);
+    set.group.quaternion.copy(this.setQuat);
+    set.update(performance.now() / 1000);
+    // In a headset the real-size table rises or falls to meet the sandbag.
+    if (xr && this.xrTable?.visible) this.xrTable.position.y = set.group.position.y - 0.08 * s - 0.02;
+  }
+
   render() {
     this._objUniforms();
+    this._stage();
     // Shadows: only when the block, its pose, the lamp or flying debris changed.
     const q = this.root.quaternion, k = this.key.position, sg = this._shSig;
     const now = [q.x, q.y, q.z, q.w, k.x, k.y, k.z];

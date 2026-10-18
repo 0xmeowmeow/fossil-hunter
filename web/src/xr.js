@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { TOOLS } from './data.js';
 import { leftFrom } from './science.js';
+import { timberTexture } from './set.js';
 
 const TIP = 0.13; // metres from the controller origin to the tool tip
 
@@ -67,9 +68,13 @@ export class XRControl {
     r.position.set(0, 1.05, -0.38);
     r.quaternion.identity();
     r.scale.setScalar(this.scale);
-    this.table = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.7), new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.9 }));
+    // The bench's timber, at real size (1.2 m x 0.7 m); the sandbag sits on it (view._stage).
+    const wood = new THREE.CanvasTexture(timberTexture());
+    wood.colorSpace = THREE.SRGBColorSpace;
+    this.table = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.7), new THREE.MeshStandardMaterial({ map: wood, roughness: 0.62 }));
     this.table.receiveShadow = true;
     this.view.scene.add(this.table);
+    this.view.xrTable = this.table;
     this.placePending = true; // put the bench in front of the head on the first tracked frame
     this.ui.setXR(true);
   }
@@ -101,6 +106,7 @@ export class XRControl {
     root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), f);
     this.table.position.copy(root.position).add(new THREE.Vector3(0, -0.19, 0)).addScaledVector(f, 0.05);
     this.table.quaternion.copy(root.quaternion);
+    this.view.setQuat.copy(root.quaternion);
     this.placePending = false;
   }
 
