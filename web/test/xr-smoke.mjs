@@ -103,12 +103,43 @@ await page.waitForTimeout(100);
 const after = (await state()).root;
 console.log('root before/after grab', before, after);
 
-// Finish with left Y.
+// Left Y now only shows/hides the status panel.
 await page.evaluate(() => window.__xr.controllers.left.updateButtonValue('y-button', 1));
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__xr.controllers.left.updateButtonValue('y-button', 0));
+await page.waitForTimeout(200);
+const yState = await page.evaluate(() => ({ hud: window.fh.xr.hudMesh?.visible, presenting: window.fh.view.renderer.xr.isPresenting }));
+console.log('after Y', JSON.stringify(yState));
+
+// Left X opens the wrist menu; point the right controller at "Finish" and pull the trigger.
+await page.evaluate(() => window.__xr.controllers.left.updateButtonValue('x-button', 1));
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__xr.controllers.left.updateButtonValue('x-button', 0));
+await page.waitForTimeout(300);
+const aimed = await page.evaluate(async () => {
+  const T = await import('three');
+  const x = window.fh.xr, m = x.menuMesh;
+  const it = x.menuItems.find((i) => i.id === 'finish');
+  const u = (it.rect[0] + it.rect[2] / 2) / 512, v = 1 - (it.rect[1] + it.rect[3] / 2) / 640;
+  m.updateMatrixWorld();
+  const target = m.localToWorld(new T.Vector3((u - 0.5) * 0.12, (v - 0.5) * 0.15, 0));
+  const eye = target.clone().add(new T.Vector3(0.05, 0.05, 0.15));
+  const q = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().lookAt(eye, target, new T.Vector3(0, 1, 0)));
+  const r = window.__xr.controllers.right;
+  r.position.set(eye.x, eye.y, eye.z);
+  r.quaternion.set(q.x, q.y, q.z, q.w);
+  return { menu: x.menuOn, items: x.menuItems.map((i) => i.id) };
+});
+console.log('menu', JSON.stringify(aimed));
+await page.waitForTimeout(500);
+const hover = await page.evaluate(() => window.fh.xr.menuItems[window.fh.xr.menuHover]?.id ?? null);
+await page.evaluate(() => window.__xr.controllers.right.updateButtonValue('trigger', 1));
+await page.waitForTimeout(600);
+await page.evaluate(() => window.__xr.controllers.right.updateButtonValue('trigger', 0));
 await page.waitForTimeout(400);
 const end = await state();
 const results = await page.evaluate(() => !document.getElementById('celebrate').classList.contains('hidden'));
-console.log('after Y', JSON.stringify(end), 'results shown', results);
+console.log('hovered', hover, 'after menu Finish', JSON.stringify(end), 'results shown', results);
 await page.screenshot({ path: out + '11-xr-results.png' });
 
 await browser.close();
@@ -118,7 +149,9 @@ if (!(s1.blows > 0)) fail.push('no scribe blows from trigger');
 if (Math.abs(after[0] - before[0] - -0.1) > 0.02) fail.push('grab did not move sample');
 if (!(top[1] > 1.0 && top[1] < 1.4)) fail.push('bench not placed below the eyes');
 if (chiselBlows !== 1) fail.push('VR chisel did not strike exactly once');
-if (end.presenting || !results) fail.push('Y did not finish and exit');
+if (yState.hud !== false || !yState.presenting) fail.push('Y should hide the status panel and stay in VR');
+if (!aimed.menu || hover !== 'finish') fail.push('wrist menu did not open or could not be pointed at');
+if (end.presenting || !results) fail.push('menu Finish did not finish and exit');
 if (errors.length) fail.push('page errors:\n' + errors.join('\n'));
 if (fail.length) {
   console.log('FAIL\n' + fail.join('\n'));

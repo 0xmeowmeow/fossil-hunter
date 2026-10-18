@@ -1,7 +1,8 @@
 // Meta Quest (WebXR) controls.
 //   Left grip (analog): grab and turn the sample. Left stick up/down: magnify; left/right:
 //   swing the lamp round. Left trigger: wet the surface.
-//   Left X: show/hide wrist HUD. Left Y: finish the specimen (leaves VR, shows the grade).
+//   Left X: wrist menu (point with the right controller, trigger to press): wet, leftovers,
+//   sweep, recentre, pack up, finish, leave VR. Left Y: show/hide the status panel.
 //   Right controller is the tool; its tip works the rock where it touches.
 //   Right trigger (analog): air pressure / hammer force. Right grip (analog): abrasive flow
 //   or stroke rate while squeezed. Right A: next tool. Right B: next abrasive.
@@ -31,7 +32,8 @@ export class XRControl {
         c.userData.src = e.data;
         this.hands[e.data.handedness] = c;
         if (e.data.handedness === 'right') c.add(this._toolModel());
-        if (e.data.handedness === 'left') c.add(this._hud());
+        if (e.data.handedness === 'left') c.add(this._hud(), this._menu());
+        if (e.data.handedness === 'right') c.add(this._ray());
       });
       c.addEventListener('disconnected', () => {
         for (const h of ['left', 'right']) if (this.hands[h] === c) this.hands[h] = null;
@@ -72,6 +74,7 @@ export class XRControl {
   }
 
   _end() {
+    this.setMenu(false);
     const r = this.view.root;
     if (this.saved) {
       r.position.copy(this.saved.p);
@@ -123,6 +126,110 @@ export class XRControl {
     m.rotation.x = -0.6;
     this.hudMesh = m;
     return m;
+  }
+
+  // ---- wrist menu
+
+  /** The menu's buttons, given the current state (some only appear when they apply). */
+  _items() {
+    const g = this.game;
+    const near = g.exposure >= 0.96 && g.exposure < 1;
+    return [
+      { id: 'wet', label: 'Wet the surface' },
+      near && { id: 'left', label: g.showLeft ? 'Hide leftovers' : 'Show leftovers' },
+      near && { id: 'sweep', label: 'Sweep the rest', hot: true },
+      { id: 'recentre', label: 'Recentre the bench' },
+      { id: 'pack', label: 'Pack up for the day' },
+      { id: 'finish', label: 'Finish the specimen', hot: true },
+      { id: 'exit', label: 'Leave VR' },
+    ].filter(Boolean);
+  }
+
+  _menu() {
+    const canvas = (this.menuCanvas = document.createElement('canvas'));
+    canvas.width = 512;
+    canvas.height = 640;
+    this.menuTex = new THREE.CanvasTexture(canvas);
+    this.menuTex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.15), new THREE.MeshBasicMaterial({ map: this.menuTex, transparent: true }));
+    m.position.set(0.02, 0.11, -0.07);
+    m.rotation.x = -0.45;
+    m.visible = false;
+    this.menuMesh = m;
+    return m;
+  }
+
+  _drawMenu() {
+    const c = this.menuCanvas.getContext('2d'), items = (this.menuItems = this._items());
+    c.clearRect(0, 0, 512, 640);
+    c.fillStyle = 'rgba(20,20,24,0.9)';
+    c.beginPath();
+    c.roundRect(0, 0, 512, 640, 28);
+    c.fill();
+    c.fillStyle = '#e0b35a';
+    c.font = '600 30px system-ui, sans-serif';
+    c.fillText('Fossil Hunter', 28, 52);
+    const h = 74, top = 80;
+    items.forEach((it, i) => {
+      const y = top + i * h;
+      it.rect = [20, y, 472, h - 12];
+      c.fillStyle = this.menuHover === i ? '#5a4a2c' : it.hot ? '#3a3122' : '#2a2620';
+      c.beginPath();
+      c.roundRect(...it.rect, 14);
+      c.fill();
+      c.fillStyle = '#f2e6d0';
+      c.font = '30px system-ui, sans-serif';
+      c.fillText(it.label, 44, y + 42);
+    });
+    this.menuTex.needsUpdate = true;
+  }
+
+  _ray() {
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xf0c060, transparent: true, opacity: 0.8 }));
+    line.scale.z = 0.4;
+    line.visible = false;
+    this.rayLine = line;
+    return line;
+  }
+
+  setMenu(on) {
+    this.menuOn = on;
+    if (this.menuMesh) this.menuMesh.visible = on;
+    if (this.rayLine) this.rayLine.visible = on;
+    this.menuHover = -1;
+    if (on) this._drawMenu();
+  }
+
+  /** Point the right controller at the menu; returns the hovered item index or -1. */
+  _pointMenu(R) {
+    if (!this.menuMesh) return -1;
+    R.updateMatrixWorld();
+    this.menuMesh.updateMatrixWorld();
+    const o = new THREE.Vector3().setFromMatrixPosition(R.matrixWorld);
+    const d = new THREE.Vector3(0, 0, -1).transformDirection(R.matrixWorld);
+    const rc = (this._rc ??= new THREE.Raycaster());
+    rc.set(o, d);
+    const hit = rc.intersectObject(this.menuMesh, false)[0];
+    this.rayLine.scale.z = hit ? hit.distance : 0.4;
+    if (!hit?.uv) return -1;
+    const x = hit.uv.x * 512, y = (1 - hit.uv.y) * 640;
+    return (this.menuItems ?? []).findIndex((it) => x >= it.rect[0] && x <= it.rect[0] + it.rect[2] && y >= it.rect[1] && y <= it.rect[1] + it.rect[3]);
+  }
+
+  _press(id) {
+    const g = this.game, xr = this.view.renderer.xr;
+    this._pulse(0.4, 30);
+    if (id === 'wet') g.wetten();
+    else if (id === 'left') g.setShowLeft(!g.showLeft);
+    else if (id === 'sweep') g.sweep();
+    else if (id === 'recentre') this.placePending = true;
+    else if (id === 'pack') { xr.getSession()?.end(); g.packUp(); }
+    else if (id === 'finish') { g.finish(); xr.getSession()?.end(); }
+    else if (id === 'exit') xr.getSession()?.end();
+    this.waitRelease = true; // the trigger that pressed the button mustn't also fire the tool
+    if (id !== 'left') this.setMenu(false);
+    else this._drawMenu();
   }
 
   _drawHud(trigger, gripv) {
@@ -197,19 +304,30 @@ export class XRControl {
         m.decompose(root.position, root.quaternion, new THREE.Vector3());
       }
       root.scale.setScalar(this.scale);
-      if (this._edge('left', lgp, 4)) {
+      if (this._edge('left', lgp, 4)) this.setMenu(!this.menuOn);
+      if (this._edge('left', lgp, 5)) {
         this.hudOn = !this.hudOn;
         if (this.hudMesh) this.hudMesh.visible = this.hudOn;
       }
-      if (this._edge('left', lgp, 5)) {
-        game.finish();
-        xr.getSession()?.end();
-        return;
-      }
     }
 
+    if (R && rgp && this.menuOn) {
+      // Menu open: the right controller is a pointer, and the tool rests.
+      game.xrAim = null;
+      const i = this._pointMenu(R);
+      if (i !== this.menuHover) {
+        this.menuHover = i;
+        this._drawMenu();
+      }
+      if (this._edge('right', rgp, 0) && i >= 0) this._press(this.menuItems[i].id);
+      return;
+    }
     if (R && rgp) {
-      const trigger = rgp.buttons[0]?.value ?? 0;
+      let trigger = rgp.buttons[0]?.value ?? 0;
+      if (this.waitRelease) {
+        if (trigger < 0.05) this.waitRelease = false;
+        else trigger = 0;
+      }
       const gripv = rgp.buttons[1]?.value ?? 0;
       if (this._edge('right', rgp, 4)) game.cycleTool();
       if (this._edge('right', rgp, 5)) game.cycleMedia();
