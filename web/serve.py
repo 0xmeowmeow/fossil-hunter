@@ -60,6 +60,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        if urllib.parse.urlparse(self.path).path.endswith("/api/subscribe.php"):
+            n = int(self.headers.get("Content-Length") or 0)
+            d = json.loads(self.rfile.read(min(n, 2048)) or b"{}")
+            if "@" not in str(d.get("email", "")):
+                return self._json(400, {"error": "that email address looks wrong"})
+            with open(os.path.join(os.path.dirname(DB), "subscribers.jsonl"), "a") as fh:
+                fh.write(json.dumps({"email": d.get("email"), "name": d.get("name", ""), "source": d.get("source", "")}) + "\n")
+            return self._json(200, {"ok": True})
         if urllib.parse.urlparse(self.path).path.endswith("/api/event.php"):
             n = min(int(self.headers.get("Content-Length", 0)), 65536)
             os.makedirs(os.path.dirname(DB), exist_ok=True)

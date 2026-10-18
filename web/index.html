@@ -182,6 +182,10 @@
   .museum { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.025); margin-bottom: 18px; }
   .museum div { font: 12px var(--mono); color: var(--muted); letter-spacing: .04em; }
   .museum b { display: block; font: 600 26px var(--serif); color: var(--text); }
+  .loop { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+  .loop input { flex: 1 1 200px; min-width: 0; padding: 11px 12px; background: #211e1a; color: var(--text); border: 1px solid var(--line); border-radius: 9px; font: inherit; -webkit-user-select: text; user-select: text; }
+  .loophint { display: inline-block; margin-top: 14px; font-size: 14px; color: var(--brass2); text-decoration: none; }
+  .loophint:hover { text-decoration: underline; }
   .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 18px; }
   .shelf .blk { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: rgba(255,255,255,.025); display: flex; flex-direction: column; gap: 6px; }
   .shelf .blk .cat { font: 11px var(--mono); color: var(--muted); letter-spacing: .04em; }
@@ -358,6 +362,7 @@
         <button id="btnStart" class="on big">Open the first drawer</button>
         <button id="btnDrawers" class="big ghost">Browse the drawers ↓</button>
       </div>
+      <a class="loophint" href="#loopSec">Get updates as the full game arrives ↓</a>
       <div class="scrollhint">Real techniques · invented trilobites · works on iPad, PC and Quest</div>
     </div>
   </div>
@@ -401,6 +406,19 @@
     </div>
   </section>
   <div class="wrap">
+    <section class="block" id="loopSec">
+      <div class="wrap">
+        <div class="tag">Stay in the loop</div>
+        <h2>The museum is coming</h2>
+        <p class="lead">Next up: the full game in VR on Meta Quest, your own museum to build, contracts, dig sites, amber and gems. Leave your email and you'll hear when there's something new to play. Only updates, never shared, and one reply gets you off the list.</p>
+        <form id="loopForm" class="loop">
+          <input type="email" id="loopEmail" required maxlength="120" placeholder="you@example.com" autocomplete="email">
+          <input type="text" id="loopName" maxlength="40" placeholder="Name (optional)" autocomplete="given-name">
+          <button class="on" type="submit">Keep me posted</button>
+        </form>
+        <p class="fine" id="loopMsg"></p>
+      </div>
+    </section>
     <footer>
       <span>Fossil Hunter · an experiment from <a href="/">meow-meow.io</a></span>
       <span>Techniques from real preparation labs; animals generated from a seed. The game sends anonymous play statistics (no names, emails or addresses) to help tune it.</span>

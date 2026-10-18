@@ -80,6 +80,22 @@ export class UI {
       const next = LEVELS.find((l) => !this.best[l.id]) ?? LEVELS[0];
       this.start(next, $('randomSeed').checked ? Math.floor(Math.random() * 1e6) : undefined);
     };
+    $('loopForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = $('loopEmail').value.trim(), name = $('loopName').value.trim();
+      const msg = $('loopMsg');
+      msg.textContent = 'Sending…';
+      try {
+        const r = await fetch('api/subscribe.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, name, source: new URLSearchParams(location.search).get('utm_source') || 'site' }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        msg.textContent = `Thanks${name ? `, ${name}` : ''}! You're on the list.`;
+        $('loopForm').reset();
+        import('./telemetry.js').then((t) => t.track('subscribe', null, {}));
+      } catch (err) {
+        msg.textContent = `That didn't go through: ${err.message || err}. Try again in a moment?`;
+      }
+    };
     $('btnDrawers').onclick = () => $('drawersSec').scrollIntoView({ behavior: 'smooth' });
     this.renderLevels();
     this.renderCareer();
