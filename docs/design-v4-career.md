@@ -1,6 +1,6 @@
 # Design v4: the career game (VR first)
 
-From the user's brief on 19 October 2026. This builds on `design-v3-museum.md`. The auction
+From the user's brief on 18 October 2026. This builds on `design-v3-museum.md`. The auction
 designed there is **parked**. When it comes back it includes **attending other players'
 auctions**.
 
