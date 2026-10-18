@@ -20,7 +20,7 @@ DRY=""
 echo "→ ${HOST}:${REMOTE}${DRY:+   (dry run)}"
 rsync -avz --delete --checksum $DRY \
   --include 'index.html' --include '.htaccess' \
-  --include 'src/***' --include 'api/***' \
+  --include 'src/***' --include 'api/***' --include 'media/***' \
   --exclude '*' \
   "$SRC" "${HOST}:${REMOTE}"
 [[ -n "$DRY" ]] && { echo "dry run — nothing changed"; exit 0; }
