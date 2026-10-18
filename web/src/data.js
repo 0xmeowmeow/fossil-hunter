@@ -65,6 +65,7 @@ export const MATRICES = {
   opal_clay: { name: 'Opal dirt (claystone)', fizz: 0, loupe: 'Pale, chalky kaolinite claystone (the miners call the hard band "shincracker"); soft and smooth, with flecks of grey potch.', H: .14, B: .45, T: .16, fiss: .2, colours: ['#d9d6cf', '#cfcbc2', '#e2dfd8', '#c7c2b8'] },
   mudstone: { name: 'Grey mudstone', fizz: 0.05, loupe: 'Fine, soft and pale grey; splits readily along the bedding into flat sheets.', H: .3, B: .6, T: .28, fiss: .03, colours: ['#8d897d', '#969286', '#848074', '#908c80'] },
   siltstone: { name: 'Shaly siltstone', fizz: 0.3, loupe: 'Fine-grained and faintly gritty, grey-brown; parts along thin layers.', H: .32, B: .55, T: .3, fiss: .08, colours: ['#6f675a', '#786f61', '#665e52', '#736a5c'] },
+  red_clay: { name: 'Red clay', fizz: 0, loupe: 'Sticky, iron-stained clay with grit in it; it smears rather than breaks.', H: .07, B: .25, T: .1, fiss: .6, colours: ['#6e3524', '#78402c', '#64301f', '#733a28'] },
   grey_micrite: { name: 'Grey micritic limestone', fizz: 1, loupe: 'Dense, very fine-grained grey limestone; breaks unevenly.', H: .45, B: .4, T: .65, fiss: .3, colours: ['#55524d', '#5e5a54', '#4d4a46', '#58544e'] },
 };
 
@@ -78,6 +79,7 @@ export const FOSSILS = {
   enameloid: { name: 'Enameloid (tooth)', kind: 'apatite', fizz: 0.1, loupe: 'Glassy, near-black enameloid; the root is brown and dull.', H: .65, T: .5, colour: '#2a2a2e', gloss: .8, metal: 0, marked: '#77787c' },
   opal: { name: 'Opal (potch and precious)', kind: 'opal', fizz: 0, loupe: 'Translucent grey potch shot through with flashes of colour.', H: .72, T: .3, colour: '#8d9aa6', gloss: .9, metal: 0, marked: '#b7bcc0', opal: true },
   carbon: { name: 'Carbon film (compression)', kind: 'carbon', fizz: 0, loupe: 'A dull black film with a faint sheen; the veins stand as fine raised lines. It flakes at a touch.', H: .12, T: .18, colour: '#1d1813', gloss: .35, metal: 0, marked: '#6a6158' },
+  quartz: { name: 'Quartz', kind: 'quartz', fizz: 0, loupe: 'Glassy, six-sided crystals with sharp points; the faces are mirror-flat. Nothing on the bench but steel scratches it... and not even steel.', H: .75, T: .22, colour: '#c9ced3', gloss: .95, metal: 0, marked: '#e8ebee' },
   calcite_grey: { name: 'Calcite (grey)', kind: 'calcite', fizz: 1, loupe: 'Satiny grey; faint cleavage glints, smoother than the rock around it.', H: .35, T: .4, colour: '#3f3c38', gloss: .6, metal: 0, marked: '#8f8b84' },
 };
 
@@ -180,6 +182,14 @@ export const LEVELS = [
     specimen: { seed: 340, kind: 'crinoid', count: 1, partialChance: 0.2, mix: [{ kind: 'crinoid', n: [0, 1], size: [0.45, 0.7] }] }, value: 650,
     tools: ['chisel', 'scribe_large', 'scribe_fine', 'abrader'], media: ['bicarb', 'dolomite'], features: ['notebook'],
     fresh: [['Crinoid arms', 'Each arm is a chain of tiny plates fringed with pinnules. Arms snap like spines: keep rock beside them until the end, and clean them with the fine scribe or bicarbonate.']],
+  },
+  {
+    id: 'arkansas', title: 'A pocket in red clay', place: 'Ouachita Mountains, Arkansas', difficulty: 2,
+    blurb: 'A lump of red clay from a crystal pocket, with a glassy point sticking out. Quartz is harder than anything on the bench but the alumina, and brittle with it.',
+    matrix: 'red_clay', fossil: 'quartz', parting: { base: .97, vary: .02, freq: 3 },
+    specimen: { seed: 72, kind: 'crystal', count: 1, partialChance: 0 }, value: 480,
+    tools: ['chisel', 'scribe_large', 'scribe_fine', 'abrader'], media: ['bicarb', 'dolomite', 'alox'], features: ['notebook'],
+    fresh: [['Crystals', 'Every point counts: a snapped termination is a damaged specimen. The clay is soft enough to blow away; aluminium oxide is the one powder that will frost the quartz.']],
   },
   {
     id: 'phacops', title: 'Tan limestone', place: 'Devonian, Morocco', difficulty: 3,

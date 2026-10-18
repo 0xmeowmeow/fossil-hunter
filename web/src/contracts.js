@@ -97,6 +97,14 @@ export const CONTRACTS = [
     tip: 'Crinoid arms are chains of plates held by soft tissue in life. Most crinoids fall apart into loose discs; a whole crown means fast burial.',
   },
   {
+    id: 'quartz-points', from: 'A rock shop in Hot Springs', rep: 4, days: 7,
+    title: 'A quartz cluster with every point',
+    text: 'Our customers count the terminations. A chipped point halves the price.',
+    goal: { level: 'arkansas', minExp: 0.9, minInteg: 0.9, intact: true }, supply: ['arkansas'],
+    reward: { funds: 380, rep: 6, knowledge: 3 },
+    tip: 'Quartz is 7 on Mohs\' scale: bicarbonate and dolomite blow the clay off without touching it. Vibration is the danger, not abrasion.',
+  },
+  {
     id: 'ghost-study', from: 'A university research group', rep: 30, days: 12,
     title: 'A dalmanitid for a study of eye structure',
     text: 'Welded grey-on-grey matrix. We need the specimen, not your opinion of it.',
@@ -122,6 +130,7 @@ export const LOTS = [
   { id: 'beecher-nodules', title: 'Black shale off a Beecher\'s bed dump', text: 'A collector\'s leftovers, still wrapped in newspaper.', blocks: ['beecher', 'beecher'], price: 70, rep: 0, weight: 2 },
   { id: 'sydney-shale', title: 'Mudstone from a Sydney road cutting', text: 'Bagged by a weekend fossicker before the cutting was concreted over.', blocks: ['glossopteris', 'glossopteris', 'glossopteris'], price: 110, rep: 0, weight: 2 },
   { id: 'indiana-crinoids', title: 'Crawfordsville crinoid slabs', text: 'From an old collection; the labels are in fountain pen.', blocks: ['crawfordsville', 'crawfordsville'], price: 320, rep: 6, weight: 2 },
+  { id: 'arkansas-pocket', title: 'Clay lumps from a crystal pocket', text: 'Dug at a pay-to-dig mine and never cleaned.', blocks: ['arkansas', 'arkansas'], price: 150, rep: 0, weight: 2 },
   { id: 'ohio-quarry', title: 'Quarry clear-out, near Cincinnati', text: 'Storm-bed slabs going cheap before the crusher gets them.', blocks: ['cincinnati', 'cincinnati', 'cincinnati'], price: 210, rep: 0, weight: 2 },
   { id: 'dealer-mixed', title: 'A dealer\'s mixed box', text: 'Odds and ends from a closed shop: Utah, New York and Ohio.', blocks: ['wheeler', 'beecher', 'cincinnati'], price: 140, rep: 2, weight: 2 },
   { id: 'lyme-ledge', title: 'Ledge pieces from the Blue Lias', text: 'Brought up after a winter cliff fall.', blocks: ['lyme', 'lyme'], price: 220, rep: 5, weight: 2 },

@@ -201,7 +201,7 @@ export class UI {
       `<h4>Observations</h4>${obs}` +
       `<h4>Your identification</h4>` +
       `<select data-g="matrix">${opt('', 'Matrix: not sure yet', game.guess.matrix ?? '')}${mats.map(([id, m]) => opt(id, m.name, game.guess.matrix)).join('')}</select>` +
-      `<select data-g="fossil">${opt('', 'Fossil material: not sure yet', game.guess.fossil ?? '')}${opt('calcite', 'Calcite', game.guess.fossil)}${opt('pyrite', 'Pyrite', game.guess.fossil)}${opt('carbon', 'Carbon film', game.guess.fossil)}</select>` +
+      `<select data-g="fossil">${opt('', 'Fossil material: not sure yet', game.guess.fossil ?? '')}${opt('calcite', 'Calcite', game.guess.fossil)}${opt('pyrite', 'Pyrite', game.guess.fossil)}${opt('carbon', 'Carbon film', game.guess.fossil)}${opt('quartz', 'Quartz', game.guess.fossil)}</select>` +
       `<h4>Plan</h4>` +
       (plan ? plan.map(([h, t]) => `<div class="step"><b>${h}.</b> ${t}</div>`).join('') : '<p>Choose a matrix and a fossil material to get a plan. It follows your identification, so if the tools behave differently from what it says, check your guess.</p>');
     for (const b of box.querySelectorAll('.tests button')) b.onclick = () => game.armTest(b.dataset.t);
@@ -954,7 +954,7 @@ function idText(game) {
 
 const GROUP = {
   ammonite: 'ammonite', gastropod: 'sea snail', bivalve: 'bivalve', brachiopod: 'brachiopod', shark_tooth: 'shark tooth',
-  crinoid: 'crinoid (sea lily)', leaf: 'Glossopteris leaf',
+  crinoid: 'crinoid (sea lily)', leaf: 'Glossopteris leaf', crystal: 'quartz crystal cluster',
   bivalve_opal: 'opalised freshwater mussel',
   ptychopariid: 'ptychopariid trilobite', redlichiid: 'redlichiid trilobite', asaphid: 'asaphid trilobite',
   phacopid: 'phacopid trilobite', dalmanitid: 'dalmanitid trilobite', odontopleurid: 'spiny odontopleurid trilobite',

@@ -11,7 +11,7 @@ const check = (ok, msg) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`);
   if (!ok) fails++;
 };
-for (const id of ['glossopteris', 'crawfordsville']) {
+for (const id of ['glossopteris', 'crawfordsville', 'arkansas']) {
   const lv = LEVELS.find((l) => l.id === id);
   for (const seed of [lv.specimen.seed, 12345, 777]) {
     const t0 = performance.now();
@@ -24,7 +24,7 @@ for (const id of ['glossopteris', 'crawfordsville']) {
     const card = fieldGuide(sp)[0];
     check(sp.targets.length > 500 && g.exposure > 0.99 && g.value > lv.value * 0.5,
       `${id} seed ${seed}: ${sp.targets.length} target voxels, ${sp.parts.length} snappable parts, $${g.value} of $${lv.value}, built in ${ms.toFixed(0)} ms · ${card.genus} ${card.species}: ${card.features.join(', ')}`);
-    if (id === 'crawfordsville') check(sp.parts.length >= 4, `  crinoid arms are parts (${sp.parts.length})`);
+    if (id !== 'glossopteris') check(sp.parts.length >= 4, `  crinoid arms are parts (${sp.parts.length})`);
   }
 }
 process.exit(fails ? 1 : 0);

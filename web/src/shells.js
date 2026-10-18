@@ -15,6 +15,7 @@ import { Noise } from './noise.js';
 import { Fossil } from './fossilbase.js';
 import { Crinoid, sampleCrinoid } from './crinoid.js';
 import { Leaf, sampleLeaf } from './leaf.js';
+import { Cluster, sampleCluster } from './crystals.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -224,6 +225,10 @@ export function sampleShell(seed, kind, opts = {}) {
   } else if (kind === 'crinoid') {
     a = sampleCrinoid(rng);
     pose.tilt = rng.normal(0, 0.02);
+  } else if (kind === 'crystal') {
+    a = sampleCluster(rng);
+    pose.tilt = rng.normal(0, 0.15);
+    pose.sink = 0.02;
   } else if (kind === 'leaf') {
     a = sampleLeaf(rng);
     pose.tilt = 0;
@@ -236,5 +241,6 @@ export function sampleShell(seed, kind, opts = {}) {
 export function makeShell(spec, opts) {
   if (spec.kind === 'crinoid') return new Crinoid(spec, opts);
   if (spec.kind === 'leaf') return new Leaf(spec, opts);
+  if (spec.kind === 'crystal') return new Cluster(spec, opts);
   return spec.kind === 'ammonite' || spec.kind === 'gastropod' ? new Spiral(spec, opts) : new Lens(spec, opts);
 }
