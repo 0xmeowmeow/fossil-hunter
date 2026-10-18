@@ -25,7 +25,7 @@ rsync -avz --delete --checksum $DRY \
   "$SRC" "${HOST}:${REMOTE}"
 [[ -n "$DRY" ]] && { echo "dry run — nothing changed"; exit 0; }
 echo "→ verifying"
-for p in "" "src/main.js" "api/score.php?level=beecher"; do
+for p in "" "src/main.js" "api/score.php?level=beecher" "api/world.php?a=museums"; do
   printf '   %-30s' "/trilobite/$p"
   curl -sS -o /dev/null -w '%{http_code}\n' "https://meow-meow.io/trilobite/$p"
 done

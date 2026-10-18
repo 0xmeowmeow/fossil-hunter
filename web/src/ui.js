@@ -550,17 +550,25 @@ export class UI {
         const lv = lvOf(it);
         const on = it.where === 'museum';
         const gone = it.where === 'sell' || it.where === 'delivered';
-        const state = it.where === 'sell' ? ' · sold' : it.where === 'delivered' ? ` · delivered to ${esc(it.deliveredTo ?? 'a client')}`
-          : it.loanedTo ? ` · on loan to ${esc(it.loanedTo.who)} until day ${it.loanedTo.back}` : '';
+        const state = it.where === 'sell' ? ` · sold${it.soldTo ? ` to ${esc(it.soldTo)}` : ''}` : it.where === 'delivered' ? ` · delivered to ${esc(it.deliveredTo ?? 'a client')}`
+          : it.where === 'auction' ? ' · under the hammer' : it.loanedTo ? ` · on loan to ${esc(it.loanedTo.who)} until day ${it.loanedTo.back}` : '';
+        const away = gone || it.loanedTo || it.where === 'auction';
+        const durations = (/localhost|127\.0\.0\.1/.test(location.hostname) ? [[0.05, '3 minutes (testing)']] : []).concat([[1, '1 hour'], [6, '6 hours'], [24, '1 day'], [48, '2 days']]);
+        const sellForm = this._sellFor === it.id && !away
+          ? `<div class="sellform"><label class="fine">Reserve $<input type="number" id="sellReserve" min="5" step="5" value="${Math.max(5, Math.round((it.value ?? 50) * 0.6 / 5) * 5)}"></label>` +
+            `<select id="sellHours">${durations.map(([h, t]) => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${t}</option>`).join('')}</select>` +
+            `<button class="on" data-sellgo="${it.id}">Put it up</button></div>` : '';
         html += `<div class="blk${gone ? ' gone' : ''}"><div class="cat">${esc(lv?.place ?? '')}</div><div class="sp"><i>${esc(it.name || lv?.title || 'Specimen')}</i></div>` +
           `<div class="fine">Valued at $${it.value ?? 0} · ${Math.floor((it.exposure ?? 0) * 100)}% exposed · ${((it.integrity ?? 0) * 100).toFixed(0)}% integrity${it.mounted ? ' · mounted' : ''}${state}</div>` +
-          (gone || it.loanedTo ? '' : `<div class="row"><button data-show="${it.id}" class="${on ? '' : 'on'}">${on ? 'Take off display' : 'Put on display'}</button></div>`) + `</div>`;
+          (away ? '' : `<div class="row"><button data-show="${it.id}" class="${on ? '' : 'on'}">${on ? 'Take off display' : 'Put on display'}</button><button data-sellform="${it.id}">Auction…</button></div>`) + sellForm + `</div>`;
       }
       html += `</div>`;
     }
     html += await this._digHtml(p);
     html += await this._tourHtml(p, done, lvOf);
     html += await this._science(p);
+    const world = await import('./world.js');
+    html += world.html(p);
     // The gift shop: junk in bulk, sold at a markup to whoever comes in.
     html += `<h3 class="sub">Gift shop</h3><p class="fine">Bought in bulk, sold to visitors. Visitors come to see the specimens on display; the shop just makes them pay twice.</p><div class="shelf">`;
     for (const j of JUNK) {
@@ -587,6 +595,17 @@ export class UI {
     act('[data-lease]', 'lease', save.takeLease);
     for (const b of box.querySelectorAll('[data-dig]')) b.onclick = () => this.openDig(+b.dataset.dig);
     this._bindTour(box, p, done);
+    world.bind(this, p, items).catch((e) => console.warn('world', e));
+    // Selling at auction: a little form on the piece's card.
+    for (const b of box.querySelectorAll('[data-sellform]')) b.onclick = () => { this._sellFor = b.dataset.sellform; this.renderCareer(); };
+    for (const b of box.querySelectorAll('[data-sellgo]')) b.onclick = async () => {
+      b.disabled = true;
+      const err = await world.sell(b.dataset.sellgo, +$('sellReserve').value, +$('sellHours').value).catch((e) => e.message);
+      if (err) this.toast(err, 'bad');
+      else this.toast('Listed. Collectors are already looking.', 'good');
+      this._sellFor = null;
+      this.renderCareer();
+    };
     $('btnMuseum').onclick = () => this.visitMuseum();
     for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {
       const it = await save.getItem(b.dataset.show);
@@ -611,12 +630,14 @@ export class UI {
     }
   }
 
-  async visitMuseum() {
+  /** Walk round your museum, or someone else's ({ title, info, pieces, tour }), or a sale room. */
+  async visitMuseum(remote = null) {
     const m = this.game.museum;
     for (const id of ['menu', 'showlabel', 'intro', 'celebrate', 'hud', 'results']) $(id)?.classList.add('hidden');
     $('museumHud').classList.remove('hidden');
-    const n = await m.enter();
-    $('museumInfo').textContent = n ? `${n} specimen${n === 1 ? '' : 's'} on display` : 'Nothing on display yet: finish a specimen and choose "Display it in my museum".';
+    document.querySelector('#museumHud .mtop b').textContent = remote?.title ?? 'Your museum';
+    const n = await m.enter(remote);
+    $('museumInfo').textContent = remote ? remote.info : n ? `${n} specimen${n === 1 ? '' : 's'} on display` : 'Nothing on display yet: finish a specimen and choose "Display it in my museum".';
     // The tour, if there's one to walk.
     const stops = m.tour ?? [];
     $('btnTour').classList.toggle('hidden', stops.length < 3);
@@ -628,7 +649,7 @@ export class UI {
       if (i >= stops.length) return end();
       const s = stops[i], lv = LEVELS.find((l) => l.id === s.item.level) ?? SPECIAL[s.item.level];
       m.walkToItem(s.item.id);
-      $('tcCat').textContent = `${p.tour?.name || 'Your tour'} · stop ${i + 1} of ${stops.length}`;
+      $('tcCat').textContent = `${(remote ? remote.tour?.name : p.tour?.name) || (remote ? 'Their tour' : 'Your tour')} · stop ${i + 1} of ${stops.length}`;
       $('tcName').textContent = s.item.name || lv?.title || 'Specimen';
       $('tcText').textContent = s.card || 'No card here yet: write one in the storeroom.';
       $('tcNext').textContent = i === stops.length - 1 ? 'Finish' : 'Next stop';

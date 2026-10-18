@@ -145,7 +145,7 @@ const BOARD = 3, NOTICES = 3, ACTIVE = 3, LOT_DAYS = 3, OFFER_DAYS = 4;
 /** Is this prepared item good enough for the contract's goal? */
 export function qualifies(c, it) {
   const g = c.goal;
-  if (it.status !== 'prepared' || it.where === 'sell' || it.where === 'delivered' || it.loanedTo) return false;
+  if (it.status !== 'prepared' || ['sell', 'delivered', 'auction'].includes(it.where) || it.loanedTo) return false;
   const lv = [].concat(g.level);
   if (!lv.includes(it.level)) return false;
   if ((it.exposure ?? 0) < (g.minExp ?? 0) - 1e-9) return false;

@@ -50,8 +50,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _php(self):
+        """Forward to the real PHP (tools/php.sh runs it in a container on :8001)."""
+        import urllib.request, urllib.error
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n) if n else None
+        sub = self.path[self.path.index("/api/"):]
+        req = urllib.request.Request("http://127.0.0.1:8001" + sub, data=body, method=self.command)
+        for h in ("Content-Type", "X-FH-Key"):
+            if self.headers.get(h):
+                req.add_header(h, self.headers[h])
+        try:
+            r = urllib.request.urlopen(req, timeout=30)
+            code, data, ctype = r.status, r.read(), r.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            code, data, ctype = e.code, e.read(), e.headers.get("Content-Type", "")
+        except OSError:
+            return self._json(503, {"error": "PHP isn't running: tools/php.sh"})
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path.endswith("/api/world.php"):
+            return self._php()
         if u.path.endswith("/api/score.php"):
             level = urllib.parse.parse_qs(u.query).get("level", [""])[0]
             if level not in LEVELS:
@@ -60,6 +85,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        if urllib.parse.urlparse(self.path).path.endswith("/api/world.php"):
+            return self._php()
         if urllib.parse.urlparse(self.path).path.endswith("/api/subscribe.php"):
             n = int(self.headers.get("Content-Length") or 0)
             d = json.loads(self.rfile.read(min(n, 2048)) or b"{}")

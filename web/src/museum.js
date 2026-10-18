@@ -182,9 +182,18 @@ export class Museum {
   }
 
   /** Put the museum pieces in their cases (best first in the middle). */
-  async _fill() {
-    const items = (await save.listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum' && !it.loanedTo);
-    items.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  async _fill(remote) {
+    // Your own museum, or someone else's (or a sale room): { pieces: [{ name, level, mesh, ... }], tour }.
+    let items, loadMesh;
+    if (remote) {
+      items = remote.pieces.map((p, i) => ({ ...p, id: `r${i}`, status: 'prepared' }));
+      const net = await import('./net.js');
+      loadMesh = (it) => net.fetchMesh(it.mesh).catch(() => null);
+    } else {
+      items = (await save.listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum' && !it.loanedTo);
+      items.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+      loadMesh = (it) => save.loadDisplay(it.id);
+    }
     for (const c of this.cases) {
       if (c.mesh) { c.group.remove(c.mesh); c.mesh.traverse((o) => o.geometry?.dispose()); c.mesh = null; }
       if (c.label) { c.group.remove(c.label); if (c.label.userData.disc) c.group.remove(c.label.userData.disc); c.label = null; }
@@ -192,12 +201,12 @@ export class Museum {
     }
     let i = 0;
     const prof = await save.profile();
-    const sci = known(prof);
-    const tour = save.tourStops(prof, items);
+    const sci = remote ? new Set() : known(prof);
+    const tour = remote ? (remote.tour?.stops ?? []).map((s) => ({ item: items[s.slot], card: s.card })).filter((s) => s.item) : save.tourStops(prof, items);
     for (const it of items) {
       const c = this.cases[i++];
       if (!c) break;
-      const mesh = await save.loadDisplay(it.id);
+      const mesh = await loadMesh(it);
       if (!mesh) continue;
       c.item = it;
       c.mesh = this._specimen(mesh, c.size);
@@ -205,7 +214,7 @@ export class Museum {
       const lv = it.special ? SPECIAL[it.level] : LEVELS.find((l) => l.id === it.level);
       // Honest labels: repairs are declared; the science track adds the age of the rock.
       const lines = [it.name || lv?.title || 'Specimen', lv ? `${lv.place}` : '',
-        `Prepared on day ${it.day ?? '?'} · valued at $${it.value ?? 0}${it.repaired ? ' · spines repaired' : ''}`];
+        `${remote ? (remote.saleRoom ? `Lot ${i} · ` : '') : `Prepared on day ${it.day ?? '?'} · `}valued at $${it.value ?? 0}${it.repaired ? ' · spines repaired' : ''}`];
       if (lv && sci.has('stratigraphy') && DEPOSITS[lv.id]) lines.splice(2, 0, `${DEPOSITS[lv.id].age[0].toUpperCase()}${DEPOSITS[lv.id].age.slice(1)} old`);
       const label = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: labelTexture(lines) }));
       label.position.set(0, 0.84, c.size / 2 + 0.004);
@@ -277,7 +286,8 @@ export class Museum {
 
   // ---- visiting
 
-  async enter() {
+  async enter(remote = null) {
+    this.remote = remote;
     if (!this.group) this._build();
     this.active = true;
     this.group.visible = true;
@@ -285,7 +295,7 @@ export class Museum {
     this.view.root.visible = false;
     this._bg ??= this.view.scene.background;
     this.view.scene.background = new THREE.Color(0x2a241e);
-    const n = await this._fill();
+    const n = await this._fill(remote);
     if (!this.view.renderer.xr.isPresenting) this._camera();
     else this.placeXR();
     return n;
