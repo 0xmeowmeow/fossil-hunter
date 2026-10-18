@@ -11,6 +11,8 @@ const GENERA = {
   bivalve: ['Chesapecten', 'Glycymeris', 'Astarte', 'Mercenaria'],
   bivalve_opal: ['Hyridella', 'Velesunio'],
   brachiopod: ['Rafinesquina', 'Platystrophia', 'Hebertella', 'Mucrospirifer'],
+  crinoid: ['Macrocrinus', 'Agaricocrinus', 'Dorycrinus', 'Scytalocrinus', 'Onychocrinus'],
+  leaf: ['Glossopteris'],
   shark_tooth: ['Otodus', 'Carcharocles', 'Isurus', 'Hemipristis', 'Galeocerdo'],
   ptychopariid: ['Elrathia', 'Asaphiscus', 'Modocia', 'Ehmaniella'],
   redlichiid: ['Olenellus', 'Redlichia', 'Bristolia', 'Wanneria'],
@@ -38,6 +40,7 @@ export function speciesName(arch, rng) {
 
 export const GROUP_NAMES = {
   ammonite: 'ammonite', gastropod: 'sea snail', bivalve: 'bivalve', brachiopod: 'brachiopod', shark_tooth: 'shark tooth',
+  crinoid: 'crinoid (sea lily)', leaf: 'Glossopteris leaf',
   bivalve_opal: 'opalised freshwater mussel',
   ptychopariid: 'ptychopariid trilobite', redlichiid: 'redlichiid trilobite', asaphid: 'asaphid trilobite',
   phacopid: 'phacopid trilobite', dalmanitid: 'dalmanitid trilobite', odontopleurid: 'spiny odontopleurid trilobite',
@@ -79,6 +82,8 @@ function shellFeatures(sp) {
   } else if (a.kind === 'gastropod') f.push(`${Math.round(a.whorls)} whorls`, a.T > 2 ? 'tall spire' : 'low spire', a.ribs ? 'ribbed' : 'smooth');
   else if (a.kind === 'bivalve') f.push(a.ribs ? `${a.ribs} radial ribs` : 'smooth', a.Hb ? 'both valves' : 'single valve', 'growth lines');
   else if (a.kind === 'brachiopod') f.push(`${a.ribs} ribs`, a.wing ? 'winged hinge' : 'rounded', a.fold ? 'fold and sulcus' : 'no fold');
+  else if (a.kind === 'crinoid') f.push(`${a.arms} arms`, a.spread > 0.8 ? 'crown fanned open' : 'crown closed', 'stem of disc columnals', 'cup of calcite plates');
+  else if (a.kind === 'leaf') f.push('tongue-shaped blade', 'strong midrib', 'net (reticulate) veins', a.torn ? 'torn edge' : 'whole margin');
   else if (a.kind === 'shark_tooth') f.push(a.serr ? 'serrated edge' : 'smooth edge', Math.abs(a.curve) > 0.15 ? 'curved crown' : 'upright crown', 'bilobed root');
   if (sp.opalFrac) {
     const o = sp.opal;

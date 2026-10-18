@@ -82,6 +82,8 @@ export const DEPOSITS = {
   beecher: { age: 'about 450 million years', taph: 'Buried alive in sudden mud flows, in water short of oxygen. Pyrite replaced even legs and antennae, which almost never fossilise.' },
   wheeler: { age: 'about 507 million years', taph: 'Calm, deep, oxygen-poor mud: few scavengers came, so whole animals and moults lie flat where they settled.' },
   calvert: { age: 'about 15 million years', taph: 'A shark\'s skeleton is cartilage and rots away; its teeth are hard enamel, and a shark sheds thousands of them in a lifetime.' },
+  glossopteris: { age: 'about 255 million years', taph: 'Glossopteris trees dropped their leaves each autumn into cold swamp mud. Buried and squeezed, a leaf kept nothing but a film of carbon and the pattern of its veins.' },
+  crawfordsville: { age: 'about 340 million years', taph: 'A crinoid meadow smothered by mud from a river delta. Buried at once, the arms stayed joined instead of falling apart into loose plates, which is what usually happens.' },
   cincinnati: { age: 'about 450 million years', taph: 'A storm bed: a storm ripped up the sea floor and dropped the shells in a jumble. A whole trilobite here means it was buried fast.' },
   lyme: { age: 'about 195 million years', taph: 'Ammonite shells drifted after death and settled into mud; their empty chambers often filled with calcite crystal.' },
   phacops: { age: 'about 390 million years', taph: 'Many Moroccan phacopids are whole, some rolled up: a quick burial on a muddy sea floor.' },

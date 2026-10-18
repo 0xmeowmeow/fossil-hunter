@@ -41,6 +41,14 @@ export const CONTRACTS = [
     tip: 'Pyrite is far harder than black shale. Bicarbonate in the abrader strips the shale and leaves the gold alone.',
   },
   {
+    id: 'gondwana-leaves', from: 'Australian Museum, Sydney', rep: 2, days: 7,
+    title: 'Glossopteris leaves for the Gondwana gallery',
+    text: 'Proof that Australia, Antarctica and India were once one forest. We need a clean leaf.',
+    goal: { level: 'glossopteris', minExp: 0.85, minInteg: 0.85 }, supply: ['glossopteris'],
+    reward: { funds: 160, rep: 7, knowledge: 4 },
+    tip: 'Glossopteris turns up in Australia, India, Africa, South America and Antarctica: one of the first clues that the continents had moved.',
+  },
+  {
     id: 'ohio-mount', from: 'Cincinnati Museum Center', rep: 3, days: 7,
     title: 'The big asaphid, on a sawn base',
     text: 'For our storm-bed case: the big asaphid, mounted so it stands up for itself.',
@@ -81,6 +89,14 @@ export const CONTRACTS = [
     tip: 'Spines snap once the rock around them is gone. Leave them propped on matrix until last, and model the animal first.',
   },
   {
+    id: 'crinoid-crown', from: 'A collector in Indianapolis', rep: 12, days: 10,
+    title: 'A crinoid crown with every arm',
+    text: 'A Crawfordsville crinoid, arms all there. I have bought too many with glued stumps.',
+    goal: { level: 'crawfordsville', minExp: 0.9, minInteg: 0.9, intact: true },
+    reward: { funds: 850, rep: 10, knowledge: 4 },
+    tip: 'Crinoid arms are chains of plates held by soft tissue in life. Most crinoids fall apart into loose discs; a whole crown means fast burial.',
+  },
+  {
     id: 'ghost-study', from: 'A university research group', rep: 30, days: 12,
     title: 'A dalmanitid for a study of eye structure',
     text: 'Welded grey-on-grey matrix. We need the specimen, not your opinion of it.',
@@ -104,6 +120,8 @@ export const LOTS = [
   { id: 'estate-wheeler', title: 'Deceased estate: a box of Wheeler shale', text: 'Labelled "House Range, 1974" in a careful hand.', blocks: ['wheeler', 'wheeler', 'wheeler'], price: 120, rep: 0, weight: 3 },
   { id: 'calvert-beach', title: 'Beach-combed cliff sand from Calvert', text: 'Bagged by a retired schoolteacher. Some of it has fallen out of the bags.', blocks: ['calvert', 'calvert', 'calvert'], price: 90, rep: 0, weight: 3 },
   { id: 'beecher-nodules', title: 'Black shale off a Beecher\'s bed dump', text: 'A collector\'s leftovers, still wrapped in newspaper.', blocks: ['beecher', 'beecher'], price: 70, rep: 0, weight: 2 },
+  { id: 'sydney-shale', title: 'Mudstone from a Sydney road cutting', text: 'Bagged by a weekend fossicker before the cutting was concreted over.', blocks: ['glossopteris', 'glossopteris', 'glossopteris'], price: 110, rep: 0, weight: 2 },
+  { id: 'indiana-crinoids', title: 'Crawfordsville crinoid slabs', text: 'From an old collection; the labels are in fountain pen.', blocks: ['crawfordsville', 'crawfordsville'], price: 320, rep: 6, weight: 2 },
   { id: 'ohio-quarry', title: 'Quarry clear-out, near Cincinnati', text: 'Storm-bed slabs going cheap before the crusher gets them.', blocks: ['cincinnati', 'cincinnati', 'cincinnati'], price: 210, rep: 0, weight: 2 },
   { id: 'dealer-mixed', title: 'A dealer\'s mixed box', text: 'Odds and ends from a closed shop: Utah, New York and Ohio.', blocks: ['wheeler', 'beecher', 'cincinnati'], price: 140, rep: 2, weight: 2 },
   { id: 'lyme-ledge', title: 'Ledge pieces from the Blue Lias', text: 'Brought up after a winter cliff fall.', blocks: ['lyme', 'lyme'], price: 220, rep: 5, weight: 2 },

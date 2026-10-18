@@ -63,6 +63,8 @@ export const MATRICES = {
   micrite: { name: 'Micritic limestone', fizz: 1, loupe: 'Dense and very fine-grained, almost porcelain-like; breaks unevenly, barely along bedding.', H: .45, B: .4, T: .65, fiss: .3, colours: ['#b8a68a', '#c4b396', '#ab9a80', '#bcaa8a'] },
   sand: { name: 'Loose sand and clay', fizz: 0.1, loupe: 'Rounded sand grains in clay; crumbles under a fingernail.', H: .08, B: .3, T: .08, fiss: .5, colours: ['#b49a74', '#a88e69', '#bfa57d', '#9c8463'] },
   opal_clay: { name: 'Opal dirt (claystone)', fizz: 0, loupe: 'Pale, chalky kaolinite claystone (the miners call the hard band "shincracker"); soft and smooth, with flecks of grey potch.', H: .14, B: .45, T: .16, fiss: .2, colours: ['#d9d6cf', '#cfcbc2', '#e2dfd8', '#c7c2b8'] },
+  mudstone: { name: 'Grey mudstone', fizz: 0.05, loupe: 'Fine, soft and pale grey; splits readily along the bedding into flat sheets.', H: .3, B: .6, T: .28, fiss: .03, colours: ['#8d897d', '#969286', '#848074', '#908c80'] },
+  siltstone: { name: 'Shaly siltstone', fizz: 0.3, loupe: 'Fine-grained and faintly gritty, grey-brown; parts along thin layers.', H: .32, B: .55, T: .3, fiss: .08, colours: ['#6f675a', '#786f61', '#665e52', '#736a5c'] },
   grey_micrite: { name: 'Grey micritic limestone', fizz: 1, loupe: 'Dense, very fine-grained grey limestone; breaks unevenly.', H: .45, B: .4, T: .65, fiss: .3, colours: ['#55524d', '#5e5a54', '#4d4a46', '#58544e'] },
 };
 
@@ -75,6 +77,7 @@ export const FOSSILS = {
   calcite_pale: { name: 'Calcite (pale shell)', kind: 'calcite', fizz: 1, loupe: 'Cream calcite shell with fine growth lines.', H: .35, T: .4, colour: '#cdb89a', gloss: .45, metal: 0, marked: '#e6dccb' },
   enameloid: { name: 'Enameloid (tooth)', kind: 'apatite', fizz: 0.1, loupe: 'Glassy, near-black enameloid; the root is brown and dull.', H: .65, T: .5, colour: '#2a2a2e', gloss: .8, metal: 0, marked: '#77787c' },
   opal: { name: 'Opal (potch and precious)', kind: 'opal', fizz: 0, loupe: 'Translucent grey potch shot through with flashes of colour.', H: .72, T: .3, colour: '#8d9aa6', gloss: .9, metal: 0, marked: '#b7bcc0', opal: true },
+  carbon: { name: 'Carbon film (compression)', kind: 'carbon', fizz: 0, loupe: 'A dull black film with a faint sheen; the veins stand as fine raised lines. It flakes at a touch.', H: .12, T: .18, colour: '#1d1813', gloss: .35, metal: 0, marked: '#6a6158' },
   calcite_grey: { name: 'Calcite (grey)', kind: 'calcite', fizz: 1, loupe: 'Satiny grey; faint cleavage glints, smoother than the rock around it.', H: .35, T: .4, colour: '#3f3c38', gloss: .6, metal: 0, marked: '#8f8b84' },
 };
 
@@ -144,6 +147,14 @@ export const LEVELS = [
     fresh: [['Soft sand', 'This matrix barely holds together. The abrader eats it; a chisel just crumbles it. Mind the shells.']],
   },
   {
+    id: 'glossopteris', title: 'Leaves in mudstone', place: 'Permian, Sydney Basin, NSW', difficulty: 2,
+    blurb: 'Pale mudstone from an old swamp, with something dark pressed between the layers. Whatever it is, it is softer than the rock.',
+    matrix: 'mudstone', fossil: 'carbon', parting: { base: .95, vary: .04, freq: 3 },
+    specimen: { seed: 251, kind: 'leaf', count: 3, partialChance: 0.3 }, value: 220,
+    tools: ['chisel', 'scribe_fine', 'abrader'], media: ['bicarb', 'dolomite'], features: ['notebook'],
+    fresh: [['A compression', 'The leaf is a film of carbon thinner than paper, and softer than the mudstone. Abrasives eat it. Split the rock along the bedding and let the layers fall open.']],
+  },
+  {
     id: 'cincinnati', title: 'Shaly limestone', place: 'Late Ordovician, Ohio', difficulty: 2,
     blurb: 'A storm bed: a jumble of shells around something bigger. The rock is harder than the shells, so abrasives cut the fossils faster than the rock.',
     matrix: 'shaly_limestone', fossil: 'calcite_brown', parting: { base: .65, vary: .2, freq: 3 },
@@ -161,6 +172,14 @@ export const LEVELS = [
     specimen: { seed: 57, kind: 'ammonite', mix: [{ kind: 'bivalve', n: [0, 2] }], partialChance: 0.25 }, value: 380,
     tools: ['chisel', 'scribe_large', 'scribe_fine', 'abrader'], media: ['bicarb', 'dolomite'], features: ['notebook'],
     fresh: [],
+  },
+  {
+    id: 'crawfordsville', title: 'Sea lilies in siltstone', place: 'Mississippian, Indiana', difficulty: 3,
+    blurb: 'A cup and a fan of feathery arms on a stalk: a crinoid, lying where it fell on the sea floor. The arms are thinner than the scribe point.',
+    matrix: 'siltstone', fossil: 'calcite_pale', parting: { base: .7, vary: .2, freq: 3 },
+    specimen: { seed: 340, kind: 'crinoid', count: 1, partialChance: 0.2, mix: [{ kind: 'crinoid', n: [0, 1], size: [0.45, 0.7] }] }, value: 650,
+    tools: ['chisel', 'scribe_large', 'scribe_fine', 'abrader'], media: ['bicarb', 'dolomite'], features: ['notebook'],
+    fresh: [['Crinoid arms', 'Each arm is a chain of tiny plates fringed with pinnules. Arms snap like spines: keep rock beside them until the end, and clean them with the fine scribe or bicarbonate.']],
   },
   {
     id: 'phacops', title: 'Tan limestone', place: 'Devonian, Morocco', difficulty: 3,

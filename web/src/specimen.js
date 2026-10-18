@@ -8,7 +8,7 @@ import { sampleTrilobite, Trilobite, Assemblage } from './trilobite.js';
 import { sampleShell, makeShell } from './shells.js';
 
 // Body length in block units for each kind (a trilobite is ~5 cm at 1.0).
-const SIZES = { trilobite: [0.85, 1.05], ammonite: [0.7, 1.0], gastropod: [0.35, 0.6], bivalve: [0.35, 0.6], brachiopod: [0.25, 0.45], shark_tooth: [0.35, 0.75] };
+const SIZES = { trilobite: [0.85, 1.05], ammonite: [0.7, 1.0], gastropod: [0.35, 0.6], bivalve: [0.35, 0.6], brachiopod: [0.25, 0.45], shark_tooth: [0.35, 0.75], crinoid: [0.9, 1.1], leaf: [0.6, 0.85] };
 import { LIM, Volume } from './volume.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);

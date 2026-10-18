@@ -29,9 +29,14 @@ const shot = async (level, name, prep) => {
     const v = g.sp.vol;
     // Clear the rock above the fossil's top so there's something to see.
     if (prep) {
+      // As a preparator would: down to the fossil's base where it lies, and to the shallowest
+      // fossil's base everywhere else.
+      const kf = new Int32Array(v.nx * v.ny).fill(-1);
+      for (let j = 0; j < v.ny; j++) for (let i = 0; i < v.nx; i++) for (let k = 0; k < v.nz; k++) if (v.fossil[v.idx(i, j, k)] > 0) { kf[i + j * v.nx] = k; break; }
+      const kTop = Math.max(...kf);
       for (let k = 0; k < v.nz; k++) for (let j = 0; j < v.ny; j++) for (let i = 0; i < v.nx; i++) {
-        const n = v.idx(i, j, k);
-        if (v.rock[n] > 0 && v.fossil[n] <= 0 && k > v.nz * prep) v.rock[n] = Math.min(v.rock[n], -1.2);
+        const n = v.idx(i, j, k), c = kf[i + j * v.nx];
+        if (v.rock[n] > 0 && v.fossil[n] <= 0 && k > (c >= 0 ? c : kTop) + 1) v.rock[n] = Math.min(v.rock[n], -1.2);
       }
       v.touch(1, 1, 1, v.nx - 2, v.ny - 2, v.nz - 2);
     }
@@ -42,6 +47,12 @@ const shot = async (level, name, prep) => {
   await p.screenshot({ path: `${OUT}${tag}-${name}.png` });
   await p.evaluate(() => document.querySelectorAll('#hud, #toast, #tipread').forEach((e) => (e.style.visibility = '')));
 };
+const only = process.env.LOOK_ONLY?.split(',');
+if (only) {
+  for (const id of only) await shot(id, id, 0.42);
+  await b.close();
+  process.exit(0);
+}
 await shot('wheeler', 'raw', 0);
 await shot('phacops', 'prepped', 0.42);
 await shot('ridge', 'opal', 0.4);
