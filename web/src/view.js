@@ -269,6 +269,44 @@ export class View {
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // Desktop only: ambient occlusion, so crevices round the shell and the block's contact
+    // with the sandbag darken as they do under a real lamp. Headsets render directly.
+    this.soft = softwareGL(r);
+    if (!LITE && !this.soft && !/[?&]ao=0/.test(location.search)) this._initPost().catch((e) => console.warn('post', e));
+  }
+
+  /** A slow machine drops the occlusion rather than the frame rate: sustained frames over
+   *  ~28 ms (below 35 fps) with it on, and it goes for the session. */
+  _aoBudget() {
+    const now = performance.now(), dt = now - (this._aoLast ?? now);
+    this._aoLast = now;
+    if (dt > 200) return; // a hidden tab or a long job, not the renderer
+    this._aoEma = (this._aoEma ?? 16) * 0.97 + dt * 0.03;
+    this._aoN = (this._aoN ?? 0) + 1;
+    if (this._aoN > 180 && this._aoEma > 28) {
+      console.info('ambient occlusion off: frames at', this._aoEma.toFixed(1), 'ms');
+      this.composer = null;
+    }
+  }
+
+  async _initPost() {
+    const [{ EffectComposer }, { RenderPass }, { GTAOPass }, { OutputPass }] = await Promise.all([
+      import('three/addons/postprocessing/EffectComposer.js'), import('three/addons/postprocessing/RenderPass.js'),
+      import('three/addons/postprocessing/GTAOPass.js'), import('three/addons/postprocessing/OutputPass.js')]);
+    const r = this.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
+    // Multisampled, so edges stay as clean as the direct path's.
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    const c = new EffectComposer(r, rt);
+    c.addPass(new RenderPass(this.scene, this.camera));
+    const ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+    ao.updateGtaoMaterial({ radius: 0.24, distanceExponent: 1.4, thickness: 1, scale: 1.6, samples: 16 });
+    ao.updatePdMaterial({ radius: 6, samples: 12 });
+    ao.blendIntensity = 1;
+    c.addPass(ao);
+    c.addPass(new OutputPass());
+    this.ao = ao;
+    this.composer = c;
+    this.resize();
   }
 
   setMarks(m) {
@@ -336,6 +374,10 @@ export class View {
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.setSize(w, h);
+    }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this._fitted === undefined || Math.abs(this._fitted - this.camera.aspect) > 0.2) {
@@ -1065,6 +1107,10 @@ export class View {
       this._lastSpin = now;
       this.turn(new THREE.Vector3(0, 1, 0), dt * 0.45);
     } else this._lastSpin = undefined;
-    this.renderer.render(this.scene, this.camera);
+    // The bench gets the full treatment; the landing page and the museum go direct.
+    if (this.composer && !this.renderer.xr.isPresenting && this.set.group.visible) {
+      this.composer.render();
+      this._aoBudget();
+    } else this.renderer.render(this.scene, this.camera);
   }
 }
