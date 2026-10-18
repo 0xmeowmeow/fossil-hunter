@@ -133,12 +133,19 @@ export class XRControl {
   /** The menu's buttons, given the current state (some only appear when they apply). */
   _items() {
     const g = this.game;
-    const near = g.exposure >= 0.96 && g.exposure < 1;
+    if (g.museum?.active) {
+      return [
+        { id: 'bench', label: g.sp && !g.finished ? 'Back to the bench' : 'Back to the storeroom' },
+        { id: 'exit', label: 'Leave VR' },
+      ];
+    }
+    const near = g.sp && g.exposure >= 0.96 && g.exposure < 1;
     return [
       { id: 'wet', label: 'Wet the surface' },
       near && { id: 'left', label: g.showLeft ? 'Hide leftovers' : 'Show leftovers' },
       near && { id: 'sweep', label: 'Sweep the rest', hot: true },
       { id: 'recentre', label: 'Recentre the bench' },
+      { id: 'museum', label: 'Visit the museum' },
       { id: 'pack', label: 'Pack up for the day' },
       { id: 'finish', label: 'Finish the specimen', hot: true },
       { id: 'exit', label: 'Leave VR' },
@@ -227,9 +234,25 @@ export class XRControl {
     else if (id === 'pack') { xr.getSession()?.end(); g.packUp(); }
     else if (id === 'finish') { g.finish(); xr.getSession()?.end(); }
     else if (id === 'exit') xr.getSession()?.end();
+    else if (id === 'museum') this._toMuseum(true);
+    else if (id === 'bench') this._toMuseum(false);
     this.waitRelease = true; // the trigger that pressed the button mustn't also fire the tool
     if (id !== 'left') this.setMenu(false);
     else this._drawMenu();
+  }
+
+  /** Between the bench and the museum, inside VR. */
+  async _toMuseum(on) {
+    const m = this.game.museum;
+    if (on) {
+      if (this.table) this.table.visible = false;
+      await m.enter();
+    } else {
+      m.leave();
+      if (this.table) this.table.visible = true;
+      this.placePending = true;
+      if (!this.game.sp) this.ui.showMenu();
+    }
   }
 
   _drawHud(trigger, gripv) {
@@ -286,6 +309,33 @@ export class XRControl {
 
     const L = this.hands.left, R = this.hands.right;
     const lgp = L?.userData.src?.gamepad, rgp = R?.userData.src?.gamepad;
+
+    // In the museum: X for the menu; otherwise point at the floor and pull the trigger to step
+    // there, right stick to turn.
+    if (game.museum?.active) {
+      game.xrAim = null;
+      if (lgp && this._edge('left', lgp, 4)) this.setMenu(!this.menuOn);
+      if (R && rgp && this.menuOn) {
+        const i = this._pointMenu(R);
+        if (i !== this.menuHover) { this.menuHover = i; this._drawMenu(); }
+        if (this._edge('right', rgp, 0) && i >= 0) this._press(this.menuItems[i].id);
+        return;
+      }
+      if (R && rgp) {
+        if (this.rayLine) this.rayLine.visible = true;
+        if (this._edge('right', rgp, 0)) {
+          R.updateMatrixWorld();
+          const o = new THREE.Vector3().setFromMatrixPosition(R.matrixWorld);
+          const d = new THREE.Vector3(0, 0, -1).transformDirection(R.matrixWorld);
+          if (game.museum.teleport({ origin: o, direction: d })) this._pulse(0.3, 25);
+        }
+        const sx = rgp.axes[2] ?? 0;
+        if (Math.abs(sx) > 0.7 && !this.turned) { this.turned = true; game.museum.turnXR(-Math.sign(sx) * Math.PI / 6); }
+        else if (Math.abs(sx) < 0.3) this.turned = false;
+      }
+      return;
+    }
+    if (this.rayLine && !this.menuOn) this.rayLine.visible = false;
 
     if (L && lgp) {
       const gripv = lgp.buttons[1]?.value ?? 0;

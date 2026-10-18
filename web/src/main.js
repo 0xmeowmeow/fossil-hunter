@@ -7,6 +7,7 @@ import { XRControl } from './xr.js';
 import { LEVELS } from './data.js';
 import { buildShowcase } from './showcase.js';
 import { track } from './telemetry.js';
+import { Museum } from './museum.js';
 
 const view = new View(document.getElementById('view'));
 const sfx = new Sfx();
@@ -14,6 +15,7 @@ const ui = new UI();
 const game = new Game(view, sfx, ui);
 const input = new Input(document.getElementById('view'), document.getElementById('pad'), game);
 const xr = new XRControl(view, game, ui);
+const museum = (game.museum = new Museum(view, game, ui));
 
 function start(level, seed, opts) {
   ui.showLoading();
@@ -55,7 +57,7 @@ XRControl.supported().then((ok) => {
 });
 
 // Debug / testing hooks.
-window.fh = { game, view, start, xr };
+window.fh = { game, view, start, xr, museum };
 const params = new URLSearchParams(location.search);
 if (params.has('level')) {
   const lv = LEVELS.find((l) => l.id === params.get('level')) ?? LEVELS[0];
@@ -94,5 +96,6 @@ view.renderer.setAnimationLoop(() => {
   notePerf(dt * 1000);
   xr.update(dt);
   game.update(dt);
+  museum.update(dt);
   view.render();
 });

@@ -185,6 +185,14 @@
   .museum { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.025); margin-bottom: 18px; }
   .museum div { font: 12px var(--mono); color: var(--muted); letter-spacing: .04em; }
   .museum b { display: block; font: 600 26px var(--serif); color: var(--text); }
+  #museumHud { position: fixed; inset: 0; pointer-events: none; }
+  #museumHud > * { pointer-events: auto; position: absolute; }
+  #museumHud .mtop { top: 14px; left: 14px; padding: 10px 16px; }
+  #museumHud .mtop b { display: block; font: 600 20px var(--serif); }
+  #museumHud .mtop span { font: 12px var(--mono); color: var(--muted); }
+  #museumHud .mhint { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  #museumHud #btnMuseumBack { top: 14px; right: 14px; }
+  @media (max-width: 700px) { #museumHud .mhint { white-space: normal; width: 90%; text-align: center; } }
   .loop { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
   .loop input { flex: 1 1 200px; min-width: 0; padding: 11px 12px; background: #211e1a; color: var(--text); border: 1px solid var(--line); border-radius: 9px; font: inherit; -webkit-user-select: text; user-select: text; }
   .loophint { display: inline-block; margin-top: 14px; font-size: 14px; color: var(--brass2); text-decoration: none; }
@@ -273,7 +281,7 @@
   }
 </style>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/", "meshoptimizer": "https://cdn.jsdelivr.net/npm/meshoptimizer@0.22.0/meshopt_simplifier.module.js" } }
 </script>
 </head>
 <body>
@@ -451,6 +459,12 @@
     <div class="kicker">Unpacking the block</div>
     <div id="loadTip"></div>
   </div>
+</div>
+
+<div id="museumHud" class="hidden">
+  <div class="pane mtop"><b>Your museum</b><span id="museumInfo"></span></div>
+  <div class="pane mhint">Drag to look round · click a case to walk up to it · click the floor to walk there</div>
+  <button id="btnMuseumBack" class="on">Back to the storeroom</button>
 </div>
 
 <div id="celebrate" class="hidden">

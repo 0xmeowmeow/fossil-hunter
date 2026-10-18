@@ -119,6 +119,61 @@ vec3 grainPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDir) {
 }
 `;
 
+/**
+ * The rock-and-shell material: vertex colours plus per-vertex roughness, metalness, grain,
+ * opal and marks, with the grain bump, wetting, ink and opal play-of-colour (GRAIN_GLSL).
+ * `uniforms` is shared by every mesh using it (the bench, or one museum case).
+ */
+export function specimenMaterial(uniforms) {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float rough;\nattribute float metal;\nattribute float grain;\nattribute float opal;\nattribute vec3 extra;\nvarying vec3 vExtra;\nvarying vec3 vObjN;\nvarying float vRough;\nvarying float vMetal;\nvarying float vGrain;\nvarying float vOpal;\nvarying vec3 vObj;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRough = rough; vMetal = metal; vGrain = grain; vOpal = opal; vObj = position; vExtra = extra; vObjN = normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + GRAIN_GLSL)
+      // Wetting darkens porous rock and glosses everything: contrast goes up, as in the lab.
+      // Water also lets the shell show through thin matrix: a dark shadow where it lies just
+      // beneath. Then ink, paint and labels on the original surface (see marks.js).
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb *= mix(1.0, 0.6, uWet * vGrain);
+        diffuseColor.rgb *= 1.0 - uWet * vExtra.y * 0.62;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.55, 0.1), vExtra.z * uLeft * 0.75);
+        // Precious opal's body: black opal is near-black, light opal milky grey.
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.012, 0.014, 0.02), vec3(0.42, 0.44, 0.47), uOpalB.z), smoothstep(0.0, 0.5, vOpal));
+        if (uInkOn > 0.5 && vExtra.x > 0.01) {
+          vec3 on = normalize(vObjN);
+          float sx = (vObj.x - uInkRect.x) / uInkRect.z, t = (vObj.y - uInkRect.y) / uInkRect.z;
+          bool upF = on.z > 0.0;
+          vec4 ink = texture2D(uInk, vec2(sx, upF ? 0.5 + 0.5 * t : 0.5 - 0.5 * t));
+          float a = ink.a * smoothstep(0.3, 0.7, abs(on.z)) * smoothstep(0.3, 0.9, vExtra.x) * (0.8 + 0.2 * gNoise(vObj * 520.0));
+          diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, a);
+        }`)
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(mix(vRough, 0.38, uWet * 0.75), 0.07, smoothstep(0.0, 0.5, vOpal));')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vMetal;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec3 q = vObj * 240.0;
+          float fade = clamp(1.6 - length(fwidth(q)), 0.0, 1.0);
+          // Water fills the pores, so a wet surface reads smoother.
+          float h = vGrain * fade * (1.0 - 0.75 * uWet) * (gNoise(q) * 0.6 + gNoise(q * 2.7) * 0.4);
+          normal = grainPerturb(-vViewPosition, normal, vec2(dFdx(h), dFdy(h)) * 0.6, faceDirection);
+        }`)
+      // Precious opal: play-of-colour (opalFire above), strongest where the shell is most opalised.
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        // Leftover rock on the shell, when asked for: a slow amber pulse.
+        if (uLeft > 0.0 && vExtra.z > 0.01) totalEmissiveRadiance += vec3(1.0, 0.45, 0.08) * vExtra.z * uLeft * (0.9 + 0.6 * sin(uTime * 4.0));
+        if (vOpal > 0.01) {
+          vec3 P = vObj, N = normalize(vObjN);
+          if (!gl_FrontFacing) N = -N;
+          vec3 V = normalize(uCamObj - P);
+          totalEmissiveRadiance += opalFire(P, N, V) * vOpal * uOpalB.w;
+        }`);
+  };
+  return m;
+}
+
 export class View {
   constructor(canvas) {
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true }));
@@ -174,52 +229,7 @@ export class View {
     this.uniforms = { uWet: { value: 0 }, uInk: { value: blank }, uInkRect: { value: new THREE.Vector3(0, 0, 1) }, uInkOn: { value: 0 }, uLeft: { value: 0 }, uTime: { value: 0 },
       uOpalA: { value: new THREE.Vector4(0.02, 0.06, 0.2, 0) }, uOpalB: { value: new THREE.Vector4(440, 600, 0.1, 1) },
       uCamObj: { value: new THREE.Vector3() }, uKeyObj: { value: new THREE.Vector3(0, 0, 1) }, uSkyObj: { value: new THREE.Vector3(0, 0, 1) } };
-    this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
-    this.material.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, this.uniforms);
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float rough;\nattribute float metal;\nattribute float grain;\nattribute float opal;\nattribute vec3 extra;\nvarying vec3 vExtra;\nvarying vec3 vObjN;\nvarying float vRough;\nvarying float vMetal;\nvarying float vGrain;\nvarying float vOpal;\nvarying vec3 vObj;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRough = rough; vMetal = metal; vGrain = grain; vOpal = opal; vObj = position; vExtra = extra; vObjN = normal;');
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + GRAIN_GLSL)
-        // Wetting darkens porous rock and glosses everything: contrast goes up, as in the lab.
-        // Water also lets the shell show through thin matrix: a dark shadow where it lies just
-        // beneath. Then ink, paint and labels on the original surface (see marks.js).
-        .replace('#include <color_fragment>', `#include <color_fragment>
-          diffuseColor.rgb *= mix(1.0, 0.6, uWet * vGrain);
-          diffuseColor.rgb *= 1.0 - uWet * vExtra.y * 0.62;
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.55, 0.1), vExtra.z * uLeft * 0.75);
-          // Precious opal's body: black opal is near-black, light opal milky grey.
-          diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.012, 0.014, 0.02), vec3(0.42, 0.44, 0.47), uOpalB.z), smoothstep(0.0, 0.5, vOpal));
-          if (uInkOn > 0.5 && vExtra.x > 0.01) {
-            vec3 on = normalize(vObjN);
-            float sx = (vObj.x - uInkRect.x) / uInkRect.z, t = (vObj.y - uInkRect.y) / uInkRect.z;
-            bool upF = on.z > 0.0;
-            vec4 ink = texture2D(uInk, vec2(sx, upF ? 0.5 + 0.5 * t : 0.5 - 0.5 * t));
-            float a = ink.a * smoothstep(0.3, 0.7, abs(on.z)) * smoothstep(0.3, 0.9, vExtra.x) * (0.8 + 0.2 * gNoise(vObj * 520.0));
-            diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, a);
-          }`)
-        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(mix(vRough, 0.38, uWet * 0.75), 0.07, smoothstep(0.0, 0.5, vOpal));')
-        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vMetal;')
-        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-          {
-            vec3 q = vObj * 240.0;
-            float fade = clamp(1.6 - length(fwidth(q)), 0.0, 1.0);
-            // Water fills the pores, so a wet surface reads smoother.
-            float h = vGrain * fade * (1.0 - 0.75 * uWet) * (gNoise(q) * 0.6 + gNoise(q * 2.7) * 0.4);
-            normal = grainPerturb(-vViewPosition, normal, vec2(dFdx(h), dFdy(h)) * 0.6, faceDirection);
-          }`)
-        // Precious opal: play-of-colour (opalFire above), strongest where the shell is most opalised.
-        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          // Leftover rock on the shell, when asked for: a slow amber pulse.
-          if (uLeft > 0.0 && vExtra.z > 0.01) totalEmissiveRadiance += vec3(1.0, 0.45, 0.08) * vExtra.z * uLeft * (0.9 + 0.6 * sin(uTime * 4.0));
-          if (vOpal > 0.01) {
-            vec3 P = vObj, N = normalize(vObjN);
-            if (!gl_FrontFacing) N = -N;
-            vec3 V = normalize(uCamObj - P);
-            totalEmissiveRadiance += opalFire(P, N, V) * vOpal * uOpalB.w;
-          }`);
-    };
+    this.material = specimenMaterial(this.uniforms);
     this.chunks = new Map();
 
     this._initTool();
@@ -245,6 +255,21 @@ export class View {
     this.uniforms.uInk.value = tex;
     this.uniforms.uInkRect.value.set(...m.rect);
     this.uniforms.uInkOn.value = 1;
+  }
+
+  /** The visible surface as plain arrays, for baking a display mesh (bake.js). */
+  bakeGroups() {
+    const take = (g, extras) => {
+      const a = g.attributes, idx = g.index?.array;
+      if (!idx || !idx.length) return null;
+      const p = { pos: a.position.array, nrm: a.normal.array, col: a.color.array, idx };
+      for (const e of extras) p[e] = a[e]?.array;
+      return p;
+    };
+    return {
+      rock: [...this.chunks.values()].map((m) => take(m.geometry, [])),
+      shell: [...(this.fine?.values() ?? [])].map((f) => take(f.mesh.geometry, ['rough', 'metal', 'opal'])),
+    };
   }
 
   /** Key light direction: azimuth (radians, around the vertical) and elevation above the horizon. */

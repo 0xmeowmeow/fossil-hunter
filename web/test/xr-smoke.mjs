@@ -103,6 +103,26 @@ await page.waitForTimeout(100);
 const after = (await state()).root;
 console.log('root before/after grab', before, after);
 
+// The museum in VR: go there, point at the floor ahead, pull the trigger to step; come back.
+const tele = await page.evaluate(async () => {
+  const T = await import('three');
+  await window.fh.xr._toMuseum(true);
+  const g = window.fh.museum.group, before = g.position.toArray();
+  const r = window.__xr.controllers.right;
+  r.position.set(0.15, 1.2, -0.3);
+  const q = new T.Quaternion().setFromEuler(new T.Euler(-0.6, 0, 0));
+  r.quaternion.set(q.x, q.y, q.z, q.w);
+  return { before, active: window.fh.museum.active };
+});
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__xr.controllers.right.updateButtonValue('trigger', 1));
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__xr.controllers.right.updateButtonValue('trigger', 0));
+await page.waitForTimeout(200);
+const tele2 = await page.evaluate(async () => { const after = window.fh.museum.group.position.toArray(); await window.fh.xr._toMuseum(false); return { after, active: window.fh.museum.active }; });
+console.log('museum teleport', JSON.stringify(tele.before), '->', JSON.stringify(tele2.after));
+await page.waitForTimeout(300);
+
 // Left Y now only shows/hides the status panel.
 await page.evaluate(() => window.__xr.controllers.left.updateButtonValue('y-button', 1));
 await page.waitForTimeout(300);
@@ -151,6 +171,7 @@ if (!(top[1] > 1.0 && top[1] < 1.4)) fail.push('bench not placed below the eyes'
 if (chiselBlows !== 1) fail.push('VR chisel did not strike exactly once');
 if (yState.hud !== false || !yState.presenting) fail.push('Y should hide the status panel and stay in VR');
 if (!aimed.menu || hover !== 'finish') fail.push('wrist menu did not open or could not be pointed at');
+if (!tele.active || Math.hypot(tele2.after[0] - tele.before[0], tele2.after[2] - tele.before[2]) < 0.3 || tele2.active) fail.push('VR museum teleport / return failed');
 if (end.presenting || !results) fail.push('menu Finish did not finish and exit');
 if (errors.length) fail.push('page errors:\n' + errors.join('\n'));
 if (fail.length) {

@@ -38,6 +38,12 @@ export class Input {
   _down(e) {
     this.game.sfx.resume();
     this.canvas.setPointerCapture(e.pointerId);
+    if (this.game.museum?.active) {
+      // In the museum: drag looks round, a tap walks.
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
+      this.gesture = { kind: 'museum', last: [e.clientX, e.clientY], start: [e.clientX, e.clientY] };
+      return;
+    }
     const p = { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button };
     this.pointers.set(e.pointerId, p);
     const touches = [...this.pointers.values()].filter((q) => q.type === 'touch');
@@ -79,6 +85,12 @@ export class Input {
     }
     p.x = e.clientX;
     p.y = e.clientY;
+    if (this.gesture?.kind === 'museum') {
+      const [lx, ly] = this.gesture.last;
+      this.game.museum.look(e.clientX - lx, e.clientY - ly);
+      this.gesture.last = [e.clientX, e.clientY];
+      return;
+    }
     if (this.gesture?.kind === 'turn') {
       const [lx, ly] = this.gesture.last;
       this._turn(e.clientX - lx, e.clientY - ly);
@@ -98,6 +110,12 @@ export class Input {
 
   _up(e) {
     this.pointers.delete(e.pointerId);
+    if (this.gesture?.kind === 'museum') {
+      const g = this.gesture;
+      this.gesture = null;
+      if (Math.hypot(e.clientX - g.start[0], e.clientY - g.start[1]) < 6) this.game.ui.museumClick?.(e.clientX, e.clientY);
+      return;
+    }
     const g = this.gesture, bench = this.game.bench;
     if (bench?.active && g?.start && Math.hypot(e.clientX - g.start[0], e.clientY - g.start[1]) < 6) this.game.benchClick?.(e.clientX, e.clientY);
     if (e.type === 'pointercancel' && e.pointerId === this.toolPointer) this.game.cancelChisel();

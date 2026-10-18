@@ -103,6 +103,8 @@ Rules and numbers follow [`docs/preparation-survey.md`](docs/preparation-survey.
 - `node test/smoke.mjs`, `node test/xr-smoke.mjs` and `node test/career.mjs`: browser checks with the server (career: storeroom, pack up, resume)
 - `node test/loose.test.js`: loose rock falls away; sliced jobs give identical results
 - `node test/frames.mjs`: frame times through a big chisel split on the GPU (performance probe)
+- `node test/bake.test.js`: a prepared specimen baked to a light display mesh
+- `node test/museum.mjs`: finish two specimens, display them, walk the museum (screenshots in `../build/museum`)
   running. The XR test emulates a Quest 3 with Meta's IWER and drives the controllers.
 - Setup: `npm i`, then `npx playwright install chromium`.
 

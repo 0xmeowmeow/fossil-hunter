@@ -5,7 +5,7 @@
 // changed: each field quantised to 8 bits and stored as a difference from the fresh block,
 // then gzipped. Voxels nobody touched restore to their exact original values.
 
-const DB = 'fossil-hunter', VER = 1;
+const DB = 'fossil-hunter', VER = 2;
 const Q = 127 / 4; // density (voxel units, +-LIM = 4) -> int8
 
 let dbp = null;
@@ -13,11 +13,15 @@ function db() {
   if (dbp) return dbp;
   dbp = new Promise((res, rej) => {
     const r = indexedDB.open(DB, VER);
-    r.onupgradeneeded = () => {
+    r.onupgradeneeded = (e) => {
       const d = r.result;
-      d.createObjectStore('kv');
-      d.createObjectStore('items', { keyPath: 'id' });
-      d.createObjectStore('states');
+      if (e.oldVersion < 1) {
+        d.createObjectStore('kv');
+        d.createObjectStore('items', { keyPath: 'id' });
+        d.createObjectStore('states');
+      }
+      // v2: baked display meshes of prepared specimens (bake.js), for the museum.
+      if (e.oldVersion < 2) d.createObjectStore('display');
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -58,6 +62,7 @@ export const putItem = (it) => put('items', it);
 export async function removeItem(id) {
   await del('items', id);
   await del('states', id);
+  await del('display', id);
 }
 
 export function newItem(level, seed, extra = {}) {
@@ -162,4 +167,6 @@ export async function applyState(game, st) {
 }
 
 export const saveState = (id, st) => put('states', st, id);
+export const saveDisplay = (id, mesh) => put('display', mesh, id);
+export const loadDisplay = (id) => get('display', id);
 export const loadState = (id) => get('states', id);

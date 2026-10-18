@@ -37,6 +37,7 @@ export class UI {
     for (const b of document.querySelectorAll('#heads button')) b.onclick = () => game.setHead(b.dataset.head);
     $('btnFinish').onclick = () => game.finish();
     $('btnPack').onclick = () => game.packUp();
+    $('btnMuseumBack').onclick = () => this.leaveMuseum();
     $('btnWet').onclick = () => game.wetten();
     $('btnLeft').onclick = () => {
       game.setShowLeft(!game.showLeft);
@@ -258,6 +259,7 @@ export class UI {
     let html = `<div class="museum"><div><b>Day ${p.day}</b>of your career</div><div><b>$${p.funds}</b>funds</div>` +
       `<div><b>${p.rep}</b>reputation</div><div><b>${p.knowledge}</b>knowledge</div>` +
       `<div><b>${done.length}</b>prepared · ${shown} on display</div></div>`;
+    html += `<div class="row" style="margin:-6px 0 16px"><button id="btnMuseum" class="on">Visit your museum</button></div>`;
     html += `<div class="shelf">`;
     for (const it of shelf) {
       const lv = lvOf(it);
@@ -274,6 +276,7 @@ export class UI {
     html += `</div>`;
     box.innerHTML = html;
     for (const b of box.querySelectorAll('[data-go]')) b.onclick = () => this.resume(b.dataset.go);
+    $('btnMuseum').onclick = () => this.visitMuseum();
     // The hero's main button picks up where you left off.
     const cur = shelf.find((it) => it.status === 'working');
     const hero = $('btnStart');
@@ -281,6 +284,26 @@ export class UI {
       hero.textContent = `Continue: ${cur.name || lvOf(cur)?.title || 'your block'}`;
       hero.onclick = () => this.resume(cur.id);
     }
+  }
+
+  async visitMuseum() {
+    const m = this.game.museum;
+    for (const id of ['menu', 'showlabel', 'intro', 'celebrate', 'hud', 'results']) $(id)?.classList.add('hidden');
+    $('museumHud').classList.remove('hidden');
+    const n = await m.enter();
+    $('museumInfo').textContent = n ? `${n} specimen${n === 1 ? '' : 's'} on display` : 'Nothing on display yet: finish a specimen and choose "Display it in my museum".';
+    import('./telemetry.js').then((t) => t.track('museum_visit', '', { n }));
+  }
+
+  leaveMuseum() {
+    this.game.museum.leave();
+    $('museumHud').classList.add('hidden');
+    this.showMenu();
+  }
+
+  museumClick(x, y) {
+    const it = this.game.museum.click(x, y);
+    if (it) this.toast(it.name || 'Specimen');
   }
 
   /** Take a block off the shelf: resume its saved state if there is one. */
@@ -560,6 +583,7 @@ export class UI {
         const sell = document.querySelector('#where button[data-w="sell"] small');
         if (sell) sell.textContent = `+$${g.value}`;
       }
+      game.bakeDisplay(); // the museum shows the mounted shape
       import('./telemetry.js').then((t) => t.track('mounted', game.level.id, { shape: r.shape, base: r.base, rough: +r.rough.toFixed(2), trimmed: +r.trimmed.toFixed(2) }));
       $('cBench').outerHTML = `<div class="feat"><span>Mounted: ${esc(r.text)}${g.mounted ? ' · +8% presentation' : ''}</span></div>`;
       back();

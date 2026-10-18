@@ -785,6 +785,22 @@ export class Game {
     this.ui.readout(this, tip, probe, active);
   }
 
+  /** Bake and store the finished piece's display mesh (for the museum). Runs after Finish
+   *  and again after mounting; failures only mean the museum shows a placeholder. */
+  async bakeDisplay() {
+    if (!this.item) return;
+    try {
+      const { bake } = await import('./bake.js');
+      const mesh = await bake(this.view.bakeGroups());
+      mesh.opal = this.sp.opal ?? null;
+      await save.saveDisplay(this.item.id, mesh);
+      this.item.display = { tris: mesh.tris, lo: mesh.lo, hi: mesh.hi };
+      await save.putItem(this.item);
+    } catch (e) {
+      console.warn('bake failed', e);
+    }
+  }
+
   // ---- saving
 
   /** Write this block's state to the storeroom (made on first save). */
@@ -842,7 +858,9 @@ export class Game {
     (async () => {
       this.item ??= save.newItem(this.level, this.seed);
       this.item.value = g.value;
+      this.item.day = (await save.profile()).day;
       await this.save('prepared');
+      await this.bakeDisplay();
       const p = await save.profile();
       p.day++;
       await save.saveProfile(p);
