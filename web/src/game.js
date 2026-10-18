@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { TOOLS, MEDIA, HEADS, E_MAX, MATRICES, FOSSILS } from './data.js';
 import { Specimen } from './specimen.js';
 import { Tools, grade, integrity, exposureOf } from './tools.js';
+import { known, featuresFor, earned } from './science.js';
 import { MindModel } from './mind.js';
 import { fieldGuide } from './species.js';
 import { say } from './lexicon.js';
@@ -46,6 +47,14 @@ export class Game {
    * opts.state: saved work to resume.
    */
   async load(level, seed, opts = {}) {
+    // What the science track has taught you changes the bench (science.js). Read first: the
+    // frame loop must never see a half-set-up bench while this waits.
+    let sci;
+    try {
+      sci = known(await save.profile());
+    } catch {
+      sci = new Set();
+    }
     this.level = level;
     this.seed = seed ?? level.specimen.seed;
     this.item = opts.item ?? null;
@@ -53,7 +62,10 @@ export class Game {
     this.resumed = !!opts.state;
     // Lighter grids on headsets and tablets. A saved block keeps the size it was started at.
     this.targetVoxels = opts.item?.targetVoxels ?? (LITE ? 1.8e6 : 2.6e6);
+    this.sci = sci;
     this.sp = new Specimen(level, { seed: this.seed, targetVoxels: this.targetVoxels });
+    this.features = featuresFor(level, this.sci);
+    this.sp.repair = this.sci.has('consolidant');
     this.tools = new Tools(this.sp);
     if (LITE) this.tools.fracture.debrisScale = 0.35;
     // Only this level's tools.
@@ -109,6 +121,8 @@ export class Game {
     if (this.level && !this.level.media.includes(m)) return;
     this.settings.media = m;
     this.ui.syncSettings(this);
+    // Mohs hardness (science): say so when the powder will cut the shell too.
+    if (this.sci?.has('hardness') && this.sp && MEDIA[m].H > this.sp.fossilMat.H) this.ui.toast(`${MEDIA[m].short} is harder than the ${this.sp.fossilMat.name.toLowerCase()}: it will cut the shell too.`, 'bad');
   }
 
   cycleTool(dir = 1) {
@@ -859,12 +873,36 @@ export class Game {
       this.item.day = (await save.profile()).day;
       await this.save('prepared');
       // The grade's own numbers, which contracts check against.
-      Object.assign(this.item, { exposure: g.exposure, integrity: g.integrity, snapped: g.snapped ?? 0 });
+      Object.assign(this.item, { exposure: g.exposure, integrity: g.integrity, snapped: g.snapped ?? 0, repaired: !!(g.snapped && this.sp.repair) });
       await save.putItem(this.item);
+      await this._earn();
       await this.bakeDisplay();
       await save.endDay();
     })();
     return g;
+  }
+
+  /** Knowledge from this piece: firsts and correct identifications (science.js). */
+  async _earn() {
+    try {
+      const p = await save.profile();
+      const firsts = new Set(p.firsts ?? []);
+      const card = this.mind?.card;
+      const list = earned({
+        first: !firsts.has(this.level.id),
+        matrixOk: !!this.guess.matrix && MATRICES[this.guess.matrix]?.name === MATRICES[this.level.matrix].name,
+        fossilOk: !!this.guess.fossil && this.guess.fossil === this.sp.fossilMat.kind,
+        fitTrue: !!card?.isTrue,
+      });
+      const n = list.reduce((a, [k]) => a + k, 0);
+      p.knowledge = (p.knowledge ?? 0) + n;
+      firsts.add(this.level.id);
+      p.firsts = [...firsts];
+      await save.saveProfile(p);
+      this.ui.showEarned?.(n, list);
+    } catch (e) {
+      console.warn('knowledge', e);
+    }
   }
 
   describeSettings() {

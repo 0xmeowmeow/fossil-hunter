@@ -59,7 +59,19 @@ await p.waitForFunction(() => !document.querySelector('#career [data-deliver]'),
 const s3 = await state();
 console.log('delivered', JSON.stringify(s3));
 await p.screenshot({ path: `${out}/delivered.png`, fullPage: true });
-const ok = s1.contracts.includes(take) && s1.blocks === s0.blocks + 1 && tagged >= 1 &&
+// Science: the delivery paid 3 knowledge; learn the identification tests, then the notebook
+// should be on a Wheeler bench (which doesn't have it by default).
+await p.waitForSelector('#career [data-learn="notebook"].on', { timeout: 30000 });
+await p.click('#career [data-learn="notebook"]');
+await p.waitForSelector('#career .node.have', { timeout: 30000 });
+const learned = await p.evaluate(async () => (await (await import('./src/save.js')).profile()).science);
+await p.evaluate(() => [...document.querySelectorAll('#career [data-go]')].find((b) => b.closest('.blk').textContent.includes('Utah'))?.click());
+await p.waitForFunction(() => window.fh.game.sp && !document.getElementById('hud').classList.contains('hidden'), null, { timeout: 60000 });
+const notes = await p.evaluate(() => ({ level: window.fh.game.level.id, shown: !document.getElementById('btnNotes').classList.contains('hidden'), intro: document.getElementById('introFresh').innerText }));
+console.log('science', JSON.stringify(learned), JSON.stringify(notes));
+await p.screenshot({ path: `${out}/intro.png` });
+const ok = learned?.includes('notebook') && notes.level === 'wheeler' && notes.shown && /Identification tests/.test(notes.intro) &&
+  s1.contracts.includes(take) && s1.blocks === s0.blocks + 1 && tagged >= 1 &&
   s2.funds < s1.funds && s2.blocks > s1.blocks && !s2.lots.includes(lot) &&
   !s3.contracts.includes(take) && s3.funds > s2.funds && s3.rep > s2.rep;
 if (errors.length) console.log('page errors', errors);

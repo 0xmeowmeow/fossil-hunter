@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { TOOLS } from './data.js';
+import { leftFrom } from './science.js';
 
 const TIP = 0.13; // metres from the controller origin to the tool tip
 
@@ -139,11 +140,11 @@ export class XRControl {
         { id: 'exit', label: 'Leave VR' },
       ];
     }
-    const near = g.sp && g.exposure >= 0.96 && g.exposure < 1;
+    const near = g.sp && g.exposure >= leftFrom(g.sci ?? new Set()) && g.exposure < 1;
     return [
       { id: 'wet', label: 'Wet the surface' },
       near && { id: 'left', label: g.showLeft ? 'Hide leftovers' : 'Show leftovers' },
-      near && { id: 'sweep', label: 'Sweep the rest', hot: true },
+      near && g.exposure >= 0.96 && { id: 'sweep', label: 'Sweep the rest', hot: true },
       { id: 'recentre', label: 'Recentre the bench' },
       { id: 'museum', label: 'Visit the museum' },
       { id: 'pack', label: 'Pack up for the day' },

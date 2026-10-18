@@ -2,6 +2,7 @@
 
 import { LEVELS, MATRICES, SPECIAL } from './data.js';
 import * as save from './save.js';
+import { factsFor, findNode, leftFrom, DEPOSITS } from './science.js';
 import { outlineTop, shapes } from './trilobite.js';
 
 const $ = (id) => document.getElementById(id);
@@ -210,12 +211,14 @@ export class UI {
   /** Field guide: candidate trilobites from this deposit. One of them is in the rock. */
   renderGuide(game) {
     const box = $('guide');
-    box.innerHTML = `<h3>Field guide</h3><p>Trilobites known from this deposit. One of them is in your block. Rule them out as features appear, and fit your model to the best match.</p>`;
+    box.innerHTML = `<h3>Field guide</h3><p>Trilobites known from this deposit. One of them is in your block. Rule them out as features appear, and fit your model to the best match.</p>` +
+      (game.sci?.has('anatomy') ? `<p class="fine">${esc(findNode('anatomy').fact)}</p>` : '') +
+      (game.sci?.has('ct') ? `<p class="fine">The CT scan matches the card marked <b>CT</b>.</p>` : '');
     this.ruled ??= new Set();
     for (const c of game.guide) {
       const key = c.genus + c.species;
       const el = document.createElement('div');
-      el.className = 'card' + (this.ruled.has(key) ? ' out' : '') + (game.mind?.card === c ? ' fit' : '');
+      el.className = 'card' + (this.ruled.has(key) ? ' out' : '') + (game.mind?.card === c ? ' fit' : '') + (c.isTrue && game.sci?.has('ct') ? ' ct' : '');
       const cv = document.createElement('canvas');
       cv.width = 168;
       cv.height = 208;
@@ -241,6 +244,24 @@ export class UI {
   }
 
   /** Day, funds, reputation, knowledge, and the storeroom shelf. */
+  /** The science track, as storeroom HTML: three branches of ideas bought with knowledge. */
+  async _science(p) {
+    const S = await import('./science.js');
+    const have = S.known(p);
+    let html = `<h3 class="sub">Science track</h3><p class="fine">Knowledge comes from doing: finishing specimens, firsts, correct identifications and contracts. You have <b>${p.knowledge ?? 0}</b> to spend. Each idea changes the bench, and what it teaches turns up where it matters.</p><div class="tree">`;
+    for (const [b, title] of S.BRANCHES) {
+      html += `<div class="branch"><h4>${title}</h4>`;
+      for (const n of S.NODES.filter((x) => x.branch === b)) {
+        const got = have.has(n.id), why = S.blocked(p, n.id), needs = n.needs.some((x) => !have.has(x));
+        html += `<div class="node ${got ? 'have' : needs ? 'locked' : ''}"><b>${esc(n.name)}</b><div class="fine">${esc(n.gives)}</div>` +
+          (got ? `<div class="fine"><i>${esc(n.fact)}</i></div>`
+            : `<button data-learn="${n.id}" ${why ? `disabled title="${esc(why)}"` : 'class="on"'}>Learn · ${n.cost} knowledge</button>`) + `</div>`;
+      }
+      html += `</div>`;
+    }
+    return html + `</div>`;
+  }
+
   /** The contracts clipboard and the lots noticeboard, as storeroom HTML. */
   async _noticeboard(p, items, lvOf) {
     const C = await import('./contracts.js');
@@ -296,7 +317,7 @@ export class UI {
         const left = n.until - p.day;
         html += `<div class="blk notice"><div class="cat">${'●'.repeat(hard)}${'○'.repeat(5 - hard)} · ${left <= 1 ? 'last day' : `${left} days left`}</div>` +
           `<div class="sp">${esc(l.title)}</div><div class="fine">${esc(l.text)}</div>` +
-          `<div class="fine">${l.blocks.length} block${l.blocks.length === 1 ? '' : 's'}: ${[...new Set(lvs.map((lv) => esc(lv.place)))].join('; ')}.</div>` +
+          `<div class="fine">${l.blocks.length} block${l.blocks.length === 1 ? '' : 's'}: ${[...new Set(lvs.map((lv) => esc(lv.place) + ageOf(p, lv)))].join('; ')}.</div>` +
           `<div class="row"><button data-lot="${l.id}" ${p.funds < n.price ? 'disabled' : ''}>Buy for $${n.price}</button></div></div>`;
       }
       html += `</div>`;
@@ -345,7 +366,7 @@ export class UI {
       if (!lv) continue;
       const pct = Math.floor((it.exposure ?? 0) * 100);
       const pips = '●'.repeat(lv.difficulty) + '○'.repeat(5 - lv.difficulty);
-      html += `<div class="blk"><div class="cat">${esc(lv.place)} · ${pips}</div><div class="sp">${esc(it.name || lv.title)}</div>` +
+      html += `<div class="blk"><div class="cat">${esc(lv.place)}${ageOf(p, lv)} · ${pips}</div><div class="sp">${esc(it.name || lv.title)}</div>` +
         (it.status === 'working'
           ? `<div class="fine">${pct}% exposed · ${(it.integrity * 100).toFixed(1)}% integrity · ${Math.round(it.minutes)} min so far</div><div class="bar"><i style="width:${pct}%"></i></div>`
           : `<div class="fine">${it.from ? `From ${esc(it.from)}. ` : ''}Unopened.</div>`) +
@@ -369,6 +390,7 @@ export class UI {
       }
       html += `</div>`;
     }
+    html += await this._science(p);
     // The gift shop: junk in bulk, sold at a markup to whoever comes in.
     html += `<h3 class="sub">Gift shop</h3><p class="fine">Bought in bulk, sold to visitors. Visitors come to see the specimens on display; the shop just makes them pay twice.</p><div class="shelf">`;
     for (const j of JUNK) {
@@ -391,6 +413,7 @@ export class UI {
     act('[data-take]', 'take', save.acceptContract);
     act('[data-deliver]', 'deliver', save.deliverContract);
     act('[data-lot]', 'lot', save.buyLot);
+    act('[data-learn]', 'learn', save.learnNode);
     $('btnMuseum').onclick = () => this.visitMuseum();
     for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {
       const it = await save.getItem(b.dataset.show);
@@ -472,18 +495,25 @@ export class UI {
     const lv = game.level;
     for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('hidden', !lv.tools.includes(b.dataset.tool));
     for (const b of document.querySelectorAll('#media button')) b.classList.toggle('hidden', !lv.media.includes(b.dataset.media));
-    $('btnNotes').classList.toggle('hidden', !lv.features.includes('notebook'));
-    $('btnGuide').classList.toggle('hidden', !lv.features.includes('guide'));
-    $('btnModel').classList.toggle('hidden', !lv.features.includes('model'));
+    const feats = game.features ?? lv.features;
+    $('btnNotes').classList.toggle('hidden', !feats.includes('notebook'));
+    $('btnGuide').classList.toggle('hidden', !feats.includes('guide'));
+    $('btnModel').classList.toggle('hidden', !feats.includes('model'));
     // Intro card: where we are, and what's new.
     $('introPlace').textContent = `${lv.place} · difficulty ${'●'.repeat(lv.difficulty)}${'○'.repeat(5 - lv.difficulty)}`;
     $('introTitle').textContent = lv.title;
     $('introBlurb').textContent = game.resumed
       ? `Back on the bench where you left it: ${Math.round((performance.now() - game.started) / 60000)} minutes of work so far. ${lv.blurb}`
       : lv.blurb;
-    $('introFresh').innerHTML = lv.fresh.length
-      ? `<p class="lead" style="margin:14px 0 6px">New on this bench</p><div class="fresh">${lv.fresh.map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join('')}</div>`
-      : '';
+    // What's new on this bench, and what you know about it from the science track.
+    const facts = factsFor(lv, game.sci ?? new Set());
+    const learned = [...(game.sci ?? [])].filter((id) => ['notebook', 'guide', 'model'].includes(id) && !lv.features.includes(id) && feats.includes(id));
+    const fresh = [...lv.fresh, ...learned.map((id) => [findNode(id).name, findNode(id).gives])];
+    $('introFresh').innerHTML = (fresh.length
+      ? `<p class="lead" style="margin:14px 0 6px">New on this bench</p><div class="fresh">${fresh.map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join('')}</div>`
+      : '') + (facts.length
+      ? `<p class="lead" style="margin:14px 0 6px">What you know</p><div class="fresh">${facts.map(([a, b]) => `<b>${esc(a)}</b><span>${esc(b)}</span>`).join('')}</div>`
+      : '');
     $('intro').classList.remove('hidden');
     $('btnBegin').onclick = () => $('intro').classList.add('hidden');
     this.ruled = new Set();
@@ -517,8 +547,9 @@ export class UI {
     const p = Math.floor(game.exposure * 100 + 1e-6);
     $('expPct').textContent = `${p}%`;
     // The last couple of percent are crumbs in crevices: offer to show them, or sweep them away.
-    const near = game.exposure >= 0.96 && game.exposure < 1;
+    const near = game.exposure >= leftFrom(game.sci ?? new Set()) && game.exposure < 1;
     $('wrapup').classList.toggle('hidden', !near);
+    $('btnSweep').classList.toggle('hidden', game.exposure < 0.96);
     if (!near && game.showLeft) $('btnLeft').onclick();
     $('expBar').style.width = `${p}%`;
     const iv = game.integ.value * 100;
@@ -617,11 +648,17 @@ export class UI {
       `<div>Fossil integrity</div><div>${(g.integrity * 100).toFixed(1)}%</div>` +
       (g.spines ? `<div>Spines intact</div><div>${g.spines - g.snapped} / ${g.spines}</div>` : '') +
       `<div>Time</div><div>${g.minutes.toFixed(1)} min</div>` +
-      (lv.features.includes('notebook') ? `<div>Identification</div><div>${idText(game)}</div>` : '') +
+      ((game.features ?? lv.features).includes('notebook') ? `<div>Identification</div><div>${idText(game)}</div>` : '') +
+      (g.snapped && game.sp.repair ? `<div>Repairs</div><div>${g.snapped} spine${g.snapped === 1 ? '' : 's'} glued</div>` : '') +
       `<div>Score</div><div><b>${score}</b></div>` +
       `</div>` +
       `<div class="big" id="cValue">$${g.value}</div>` +
-      (game.sp.opal ? valuerNote(game.sp, g.value) : '') +
+      (game.sp.opal ? valuerNote(game.sp, g.value, game.sci?.has('opal')) : '') +
+      `<div id="cKnow"></div>` +
+      (() => {
+        const f = factsFor(lv, game.sci ?? new Set());
+        return f.length ? `<div class="facts">${f.map(([a, b]) => `<p><b>${esc(a)}.</b> ${esc(b)}</p>`).join('')}</div>` : '';
+      })() +
       `<button id="cBench" class="bench-cta">Prepare for display<small>Saw it to shape, level the base, and mount it.</small></button>` +
       `<div class="row" style="margin:8px 0 2px"><button id="exGlb">Download 3D model (.glb)</button><button id="exStl">For 3D printing (.stl)</button></div>` +
       `<p class="fine" style="margin:0 0 6px">The .glb keeps colours (Blender, other games, AR). The .stl is in millimetres for slicers.</p>` +
@@ -637,6 +674,13 @@ export class UI {
     $('exGlb').onclick = async () => (await import('./export.js')).exportGLB(game.view, fname);
     $('exStl').onclick = async () => (await import('./export.js')).exportSTL(game.view, fname);
     $('celebrate').classList.remove('hidden');
+  }
+
+  /** Knowledge this piece earned (game._earn), on the results card. */
+  showEarned(n, list) {
+    const el = $('cKnow');
+    if (!el || !n) return;
+    el.innerHTML = `<p class="fine" style="margin:2px 0 8px"><b style="color:var(--brass2)">+${n} knowledge</b>: ${list.map(([k, why]) => `${why}${k > 1 ? ` (+${k})` : ''}`).join(', ')}. Spend it on the science track in the storeroom.</p>`;
   }
 
   /** The display bench panel (see display.js). */
@@ -925,8 +969,16 @@ export function scoreOf(g) {
  * pattern and says what it'll fetch, guided by what similar stones went for. So: a guide range
  * from "comparable sales", and the price this buyer offers.
  */
-function valuerNote(sp, value) {
+/** ", about 450 million years" once you know stratigraphy. */
+function ageOf(p, lv) {
+  const d = DEPOSITS[lv?.id];
+  return d && (p.science ?? []).includes('stratigraphy') ? `, ${d.age.replace('about ', '~').replace(' million years', ' Myr')}` : '';
+}
+
+function valuerNote(sp, value, graded) {
   const o = sp.opal;
+  // Grading opal (science): the valuer talks in the trade's own terms.
+  const grade = graded ? ` Graded N${o.tone}, B${o.bright}, ${o.top === 'orange' ? 'orange-yellow' : o.top} on black, ${o.pattern}.` : '';
   const lo = Math.round(value * 0.7 / 10) * 10, hi = Math.round(value * 1.35 / 10) * 10;
   const why = [
     o.tone <= 2 ? 'a properly black body' : o.tone <= 4 ? 'a dark body' : 'a pale body that lets the fire wash out',
@@ -934,7 +986,7 @@ function valuerNote(sp, value) {
     o.pattern === 'harlequin' ? 'a true harlequin pattern' : o.pattern,
     o.bright <= 2 ? 'bright from most angles' : o.bright >= 4 ? 'a bit dull unless the light is right' : 'decent brightness',
   ];
-  return `<p class="fine" style="margin:2px 0 6px">A buyer at the Ridge: “${why.join(', ')}. Similar pieces have gone for $${lo}–$${hi}.” Opal prices are judgement, not formula.</p>`;
+  return `<p class="fine" style="margin:2px 0 6px">A buyer at the Ridge: “${why.join(', ')}. Similar pieces have gone for $${lo}–$${hi}.”${grade} Opal prices are judgement, not formula.</p>`;
 }
 
 function esc(s) {

@@ -111,6 +111,14 @@ export async function deliverContract(id) {
   return null;
 }
 
+/** Learn an idea on the science track. Returns an error or null. */
+export async function learnNode(id) {
+  const r = (await import('./science.js')).learn(await profile(), id);
+  if (typeof r === 'string') return r;
+  await saveProfile(r);
+  return null;
+}
+
 /** Buy a lot off the noticeboard; its blocks go on the shelf. Returns an error or null. */
 export async function buyLot(id) {
   const C = await import('./contracts.js');

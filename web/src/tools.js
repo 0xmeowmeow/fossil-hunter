@@ -603,7 +603,8 @@ export function integrity(sp) {
   const markMean = t.length ? marks / t.length / 255 : 0;
   const nSp = sp.parts.length;
   const snapped = sp.parts.filter((p) => !p.alive).length;
-  const value = Math.max(0, 1 - 3 * lostFrac - 0.45 * markMean - (nSp ? 0.35 * (snapped / nSp) : 0));
+  // A glued spine (consolidants, on the science track) costs far less than a lost one.
+  const value = Math.max(0, 1 - 3 * lostFrac - 0.45 * markMean - (nSp ? (sp.repair ? 0.1 : 0.35) * (snapped / nSp) : 0));
   return { value, lostFrac, markMean, snapped, spines: nSp };
 }
 

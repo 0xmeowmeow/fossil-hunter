@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { specimenMaterial } from './view.js';
 import * as save from './save.js';
 import { LEVELS, SPECIAL } from './data.js';
+import { known, DEPOSITS } from './science.js';
 
 const SCALE = 0.05 * 4; // specimen units -> metres (1 unit = 5 cm), shown enlarged for reading
 const EYE = 1.6;
@@ -56,8 +57,10 @@ function labelTexture(lines) {
   g.fillStyle = '#2a2118';
   g.font = 'italic 700 44px Fraunces, Georgia, serif';
   g.fillText(lines[0], 28, 78, 456);
-  g.font = '500 26px Fraunces, Georgia, serif';
-  lines.slice(1).forEach((l, i) => g.fillText(l, 28, 128 + i * 38, 456));
+  // Three lines fit at a comfortable size; a fourth squeezes them up a little.
+  const more = lines.length > 3;
+  g.font = `500 ${more ? 22 : 26}px Fraunces, Georgia, serif`;
+  lines.slice(1).forEach((l, i) => g.fillText(l, 28, (more ? 120 : 128) + i * (more ? 32 : 38), 456));
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -166,6 +169,7 @@ export class Museum {
       c.item = null;
     }
     let i = 0;
+    const sci = known(await save.profile());
     for (const it of items) {
       const c = this.cases[i++];
       if (!c) break;
@@ -175,7 +179,11 @@ export class Museum {
       c.mesh = this._specimen(mesh, c.size);
       c.group.add(c.mesh);
       const lv = it.special ? SPECIAL[it.level] : LEVELS.find((l) => l.id === it.level);
-      const label = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: labelTexture([it.name || lv?.title || 'Specimen', lv ? `${lv.place}` : '', `Prepared on day ${it.day ?? '?'} · valued at $${it.value ?? 0}`]) }));
+      // Honest labels: repairs are declared; the science track adds the age of the rock.
+      const lines = [it.name || lv?.title || 'Specimen', lv ? `${lv.place}` : '',
+        `Prepared on day ${it.day ?? '?'} · valued at $${it.value ?? 0}${it.repaired ? ' · spines repaired' : ''}`];
+      if (lv && sci.has('stratigraphy') && DEPOSITS[lv.id]) lines.splice(2, 0, `${DEPOSITS[lv.id].age[0].toUpperCase()}${DEPOSITS[lv.id].age.slice(1)} old`);
+      const label = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: labelTexture(lines) }));
       label.position.set(0, 0.84, c.size / 2 + 0.004);
       label.rotation.x = -0.25;
       c.group.add(label);
