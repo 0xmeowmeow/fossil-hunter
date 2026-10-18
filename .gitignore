@@ -7,3 +7,11 @@ web/node_modules/
 # Dev-server data (telemetry and scores) and local certificates
 web/.devdata/
 web/.cert/
+# Android (Quest app) build output; the signing key lives in ~/.config/fossil-hunter/, never here
+android/node_modules/
+android/.gradle/
+android/app/build/
+android/build/
+android/*.apk
+android/*.aab
+android/*.idsig

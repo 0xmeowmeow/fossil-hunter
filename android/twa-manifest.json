@@ -1,0 +1,55 @@
+{
+  "packageId": "io.meowmeow.fossilhunter",
+  "applicationId": "io.meowmeow.fossilhunter",
+  "host": "meow-meow.io",
+  "name": "Fossil Hunter",
+  "launcherName": "Fossil Hunter",
+  "display": "standalone",
+  "themeColor": "#17171A",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#17171A",
+  "enableNotifications": false,
+  "enableMicrophone": false,
+  "enableXRScene": false,
+  "startUrl": "/trilobite/?utm_source=quest_app",
+  "iconUrl": "https://meow-meow.io/trilobite/media/icon-512.png",
+  "maskableIconUrl": "https://meow-meow.io/trilobite/media/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "/home/meow/.config/fossil-hunter/android.keystore",
+    "alias": "fossilhunter"
+  },
+  "appVersionName": "0.1.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "fossil-hunter/make-twa.mjs",
+  "webManifestUrl": "https://meow-meow.io/trilobite/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": true,
+  "horizonOSAppMode": "2D",
+  "fullScopeUrl": "https://meow-meow.io/trilobite/",
+  "minSdkVersion": 23,
+  "orientation": "landscape",
+  "fingerprints": [
+    {
+      "value": "17:66:81:E9:42:BB:AE:81:76:7C:ED:6F:6B:29:83:7C:D7:B4:C7:01:C9:34:2D:20:1B:5A:DE:FA:99:99:4A:9F"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "0.1.0"
+}

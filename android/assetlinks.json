@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.meowmeow.fossilhunter",
+        "sha256_cert_fingerprints": ["17:66:81:E9:42:BB:AE:81:76:7C:ED:6F:6B:29:83:7C:D7:B4:C7:01:C9:34:2D:20:1B:5A:DE:FA:99:99:4A:9F"]
+      }
+    }]

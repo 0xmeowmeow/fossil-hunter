@@ -5,3 +5,6 @@
     Header set Cache-Control "no-cache, must-revalidate"
   </FilesMatch>
 </IfModule>
+
+# The installable-app manifest.
+AddType application/manifest+json .webmanifest

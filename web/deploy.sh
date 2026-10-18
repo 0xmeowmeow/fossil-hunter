@@ -19,7 +19,7 @@ DRY=""
 [[ "${1:-}" == "-n" || "${1:-}" == "--dry-run" ]] && DRY="--dry-run"
 echo "→ ${HOST}:${REMOTE}${DRY:+   (dry run)}"
 rsync -avz --delete --checksum $DRY \
-  --include 'index.html' --include '.htaccess' \
+  --include 'index.html' --include '.htaccess' --include 'manifest.webmanifest' \
   --include 'src/***' --include 'api/***' --include 'media/***' \
   --exclude '*' \
   "$SRC" "${HOST}:${REMOTE}"
