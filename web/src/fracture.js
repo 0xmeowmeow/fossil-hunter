@@ -44,6 +44,11 @@ export class Fracture {
     // `down` is gravity in volume space; the game updates it as the block is turned.
     this.down = [0, 0, -1];
     this._brace([0, 0, -1]);
+    this.sliceMs = Infinity;
+    this.workMs = 0;
+    this._t0 = 0;
+    this.flooded = 0; // running total of voxels visited by crack floods
+    this.debrisScale = 1;
   }
 
   /**
@@ -74,6 +79,39 @@ export class Fracture {
     const v = this.v, s = this.braceDir;
     const i = q % v.nx, j = ((q / v.sy) | 0) % v.ny, k = (q / v.sz) | 0;
     return i * s[0] + j * s[1] + k * s[2] > this.braceAt;
+  }
+
+  // ---- time slicing: heavy work runs as generators that pause when their slice is used up,
+  // so a headset keeps rendering at full rate while a big crack is worked out (game.js runs
+  // them a few ms per frame). The plain methods run the same generators to completion.
+
+  *_pause() {
+    const now = performance.now();
+    if (now - this._t0 > this.sliceMs) {
+      this.workMs += now - this._t0;
+      yield;
+      this._t0 = performance.now();
+    }
+  }
+
+  /** Run one of the generator methods straight through. */
+  _sync(gen) {
+    const prev = this.sliceMs;
+    this.sliceMs = Infinity;
+    this.workMs = 0;
+    this._t0 = performance.now();
+    let r;
+    try {
+      while (!(r = gen.next()).done);
+    } finally {
+      this.sliceMs = prev;
+    }
+    return r.value;
+  }
+
+  /** Work done on the current job so far (ms), excluding the frames it waited through. */
+  _worked() {
+    return this.workMs + (performance.now() - this._t0);
   }
 
   solid(n) {
@@ -135,26 +173,58 @@ export class Fracture {
    * parts cleanly, and cuts through it (taking that bit of fossil) where welded.
    */
   piece(f, seeds, E, maxN = 300000) {
+    return this._sync(this.pieceGen(f, seeds, E, maxN));
+  }
+
+  *pieceGen(f, seeds, E, maxN = 300000) {
     const v = this.v, st = ++this.stamp, mark = this.mark, stack = this.stack;
-    const rock = v.rock, fossil = v.fossil;
-    const nb = [1, -1, v.sy, -v.sy, v.sz, -v.sz];
     // Breadth-first, so the crack front grows evenly and an unaffordable one fails early.
-    const P = [];
-    let sp = 0, head = 0;
+    const S = { f, E, maxN, st, P: [], sp: 0, head: 0, cost: 0, deflected: [], fail: null };
     for (const s of seeds) {
       if (mark[s] === st || !this.solid(s) || f(s) >= 0) continue;
       mark[s] = st;
-      stack[sp++] = s;
+      stack[S.sp++] = s;
     }
-    if (!sp) return (this.lastFail = 'no seeds'), null;
-    let cost = 0;
-    const deflected = [];
+    if (!S.sp) return (this.lastFail = 'no seeds'), null;
+    // The flood runs in plain batches (V8 optimises hot loops in generators poorly); the
+    // generator only decides when to pause between them.
+    while (S.head < S.sp) {
+      this._flood(S, S.head + 16384);
+      if (S.fail) return (this.lastFail = S.fail), null;
+      yield* this._pause();
+    }
+    const P = S.P;
+    if (S.cost <= 0) return (this.lastFail = 'nothing cut'), null;
+    // Whatever the crack went round (the shell, a skin of matrix) must still be attached to the
+    // block outside the piece; if not, it goes with the piece (e.g. the wrong layer was split
+    // and the fossil rides off inside the slab).
+    if (S.deflected.length) {
+      const st2 = ++this.stamp;
+      for (const d0 of S.deflected) {
+        if (mark[d0] === st2 || mark[d0] === st) continue;
+        const comp = this._loose(d0, st, st2, f);
+        if (comp) for (const q of comp) { mark[q] = st; P.push(q); }
+        yield* this._pause();
+      }
+      // Re-stamp so the caller sees one membership mark for the whole piece.
+      for (const q of P) mark[q] = st;
+    }
+    return { P, cost: S.cost, stamp: st };
+  }
+
+  /** One batch of the crack flood (see pieceGen): runs until head reaches `limit`. */
+  _flood(S, limit) {
+    const v = this.v, mark = this.mark, stack = this.stack, rock = v.rock, fossil = v.fossil;
+    const nb = this._nb ??= [1, -1, v.sy, -v.sy, v.sz, -v.sz];
+    const f = S.f, E = S.E, maxN = S.maxN, st = S.st, P = S.P, deflected = S.deflected;
     const NEAR = -LIM + 1e-3;
-    while (head < sp) {
+    let sp = S.sp, head = S.head, cost = S.cost, fail = null;
+    // (No try/finally here: it keeps V8 from optimising this loop; state is written back below.)
+    outer: while (head < sp && head < limit) {
       const q = stack[head++];
       P.push(q);
-      if (P.length > maxN) return (this.lastFail = 'too big'), null;
-      if (this.braced(q)) return (this.lastFail = 'anchored'), null; // reached the base: that's the block, not a piece
+      if (P.length > maxN) { fail = 'too big'; break; }
+      if (this.braced(q)) { fail = 'anchored'; break; } // reached the base: that's the block, not a piece
       const qFos = fossil[q] > 0;
       for (let t = 0; t < 6; t++) {
         const r = q + nb[t];
@@ -169,7 +239,7 @@ export class Fracture {
             stack[sp++] = r;
           } else {
             cost += this.faceT(q, r);
-            if (cost > E) return (this.lastFail = 'energy'), null;
+            if (cost > E) { fail = 'energy'; break outer; }
           }
           continue;
         }
@@ -179,46 +249,44 @@ export class Fracture {
         if (inside && !qFos && (fos ? this.partingAt(r) > this.deflect : fr > -this.skin(r))) {
           deflected.push(r);
           cost += fos ? this.faceT(q, r) : this.sp.matrix.T * 0.06;
-          if (cost > E) return null;
+          if (cost > E) { fail = 'energy'; break outer; }
         } else if (inside) {
           mark[r] = st;
           stack[sp++] = r;
         } else {
           cost += this.faceT(q, r);
-          if (cost > E) return null;
+          if (cost > E) { fail = 'energy'; break outer; }
         }
       }
     }
-    if (cost <= 0) return (this.lastFail = 'nothing cut'), null;
-    // Whatever the crack went round (the shell, a skin of matrix) must still be attached to the
-    // block outside the piece; if not, it goes with the piece (e.g. the wrong layer was split
-    // and the fossil rides off inside the slab).
-    if (deflected.length) {
-      const st2 = ++this.stamp, mark2 = mark;
-      for (let i = 0; i < deflected.length; i++) {
-        const d0 = deflected[i];
-        if (mark2[d0] === st2 || mark2[d0] === st) continue;
-        const comp = [d0];
-        mark2[d0] = st2;
-        let attached = false;
-        for (let h = 0; h < comp.length; h++) {
-          const q = comp[h];
-          for (let t = 0; t < 6; t++) {
-            const r = q + nb[t];
-            if (mark2[r] === st2 || mark2[r] === st) continue;
-            if (rock[r] <= 0 && fossil[r] <= 0) continue;
-            if (f(r) >= 0) { attached = true; continue; }
-            mark2[r] = st2;
-            comp.push(r);
-          }
-          if (comp.length > 400000) { attached = true; break; }
-        }
-        if (!attached) for (const q of comp) { mark[q] = st; P.push(q); }
+    this.flooded += head - S.head;
+    S.sp = sp;
+    S.head = head;
+    S.cost = cost;
+    S.fail = fail;
+  }
+
+  /** The material connected to d0 inside the piece, if nothing holds it to the block; else null. */
+  _loose(d0, st, st2, f) {
+    const v = this.v, mark = this.mark, rock = v.rock, fossil = v.fossil, nb = this._nb;
+    // Flood the whole component even once it's known to be attached: later checks rely on
+    // every voxel of it carrying this mark.
+    const comp = [d0];
+    mark[d0] = st2;
+    let attached = false;
+    for (let h = 0; h < comp.length; h++) {
+      const q = comp[h];
+      for (let t = 0; t < 6; t++) {
+        const r = q + nb[t];
+        if (mark[r] === st2 || mark[r] === st) continue;
+        if (rock[r] <= 0 && fossil[r] <= 0) continue;
+        if (f(r) >= 0) { attached = true; continue; }
+        mark[r] = st2;
+        comp.push(r);
       }
-      // Re-stamp so the caller sees one membership mark for the whole piece.
-      for (const q of P) mark[q] = st;
+      if (comp.length > 400000) { attached = true; break; }
     }
-    return { P, cost, stamp: st };
+    return attached ? null : comp;
   }
 
   /**
@@ -227,6 +295,18 @@ export class Fracture {
    * Returns { kind: 'flake'|'split'|'crush', ...} with the piece for debris.
    */
   strike(g, d, e, headId, energy) {
+    return this._sync(this.strikeGen(g, d, e, headId, energy));
+  }
+
+  /** Start a time-sliced blow: set sliceMs, then call next() once per frame until done. */
+  begin(gen, sliceMs) {
+    this.sliceMs = sliceMs;
+    this.workMs = 0;
+    this._t0 = performance.now();
+    return gen;
+  }
+
+  *strikeGen(g, d, e, headId, energy) {
     const v = this.v, sp = this.sp, head = HEADS[headId];
     d = norm(d);
     e = norm(cross(cross(d, e), d)); // make sure the blade is square to the drive
@@ -336,9 +416,12 @@ export class Fracture {
     cands.sort((a, b) => b.align - a.align);
     const rough = (c) => (c.global ? this._estimate(c.f) : 0);
     let best = null;
-    const t0 = performance.now();
+    // Budget in work done (voxels flooded), not time, so a blow comes out the same on every
+    // device. ~450k voxels is about 70 ms on a laptop.
+    const w0 = this.flooded;
     for (const c of cands) {
-      if (performance.now() - t0 > 70 && best) break; // budget: keep the best found so far
+      if (this.flooded - w0 > 450000 && best) break; // keep the best found so far
+      yield* this._pause();
       if (best && c.align < best.score - 0.05) continue; // can't win even at zero cost
       if (c.global && rough(c) > energy * 1.6) continue; // a crack that size is out of reach
       let sd = seedArr;
@@ -348,7 +431,7 @@ export class Fracture {
           return idx(i + c.seedShift[0], j + c.seedShift[1], k + c.seedShift[2]);
         });
       }
-      const r = this.piece(c.f, sd, energy, c.global ? 2500000 : 250000);
+      const r = yield* this.pieceGen(c.f, sd, energy, c.global ? 2500000 : 250000);
       if (!r || r.P.length < 4) continue;
       const score = c.align - 0.55 * (r.cost / energy) + 0.12 * this.rng.next();
       if (!best || score > best.score) best = { ...c, ...r, score };
@@ -362,7 +445,7 @@ export class Fracture {
     }
     out.kind = best.kind;
     out.cost = best.cost;
-    const res = this._remove(best);
+    const res = yield* this._removeGen(best);
     Object.assign(out, res);
     this._damage(g, Math.max(0, energy - best.cost) / E_MAX);
     return out;
@@ -402,6 +485,10 @@ export class Fracture {
 
   /** Cut the chosen piece free: smooth fracture faces on the block, debris field for the piece. */
   _remove(c) {
+    return this._sync(this._removeGen(c));
+  }
+
+  *_removeGen(c) {
     const v = this.v, { sy, sz } = v, f = c.f, mark = this.mark;
     // Later candidates reused the visit marks: re-mark the chosen piece.
     const st = ++this.stamp;
@@ -433,14 +520,19 @@ export class Fracture {
 
     // Debris field: the piece's own surface, bounded by the fracture where it was cut.
     const pad = 2;
-    const stride = (hi[0] - lo[0] + 5) * (hi[1] - lo[1] + 5) * (hi[2] - lo[2] + 5) > 3e6 ? 2 : 1;
+    // Debris tumbles away in a second: big pieces are meshed coarser (meshing a split slab at
+    // full resolution costs a dropped frame or ten).
+    const cells = (hi[0] - lo[0] + 5) * (hi[1] - lo[1] + 5) * (hi[2] - lo[2] + 5);
+    const k = this.debrisScale; // headsets and tablets mesh debris coarser (set by the game)
+    const stride = cells > 6e6 * k ? 3 : cells > 8e5 * k ? 2 : 1;
     const ox = Math.max(0, lo[0] - pad), oy = Math.max(0, lo[1] - pad), oz = Math.max(0, lo[2] - pad);
     const dx = Math.ceil((Math.min(v.nx - 1, hi[0] + pad) - ox) / stride) + 1;
     const dy = Math.ceil((Math.min(v.ny - 1, hi[1] + pad) - oy) / stride) + 1;
     const dz = Math.ceil((Math.min(v.nz - 1, hi[2] + pad) - oz) / stride) + 1;
     const field = new Float32Array(dx * dy * dz).fill(-LIM);
     const fos = new Float32Array(dx * dy * dz);
-    for (let k = 0; k < dz; k++)
+    for (let k = 0; k < dz; k++) {
+      yield* this._pause(); // (before anything in the block changes)
       for (let j = 0; j < dy; j++)
         for (let i = 0; i < dx; i++) {
           const gi = ox + i * stride, gj = oy + j * stride, gk = oz + k * stride;
@@ -456,14 +548,20 @@ export class Fracture {
             field[l] = Math.max(-LIM, Math.min(-0.5, -fv / stride));
           }
         }
+    }
 
-    // Now cut it out of the block, leaving a smooth fracture face.
-    for (const q of take) {
+    // Now cut it out of the block, leaving a smooth fracture face. (Pausing in here is safe:
+    // nothing is remeshed until the whole blow is done and the box is touched.)
+    for (let i = 0; i < take.length; i++) {
+      if ((i & 65535) === 65535) yield* this._pause();
+      const q = take[i];
       const fv = Math.max(-LIM, f(q));
       if (v.rock[q] > fv) v.rock[q] = fv;
       if (v.fossil[q] > 0) v.fossil[q] = Math.min(-0.5, fv); // only shell that went with the piece
     }
-    for (const q of take) {
+    for (let i = 0; i < take.length; i++) {
+      if ((i & 32767) === 32767) yield* this._pause();
+      const q = take[i];
       for (const o of nb) {
         const r = q + o;
         if (mark[r] === st || !this.solid(r) || this.isFos(r)) continue;

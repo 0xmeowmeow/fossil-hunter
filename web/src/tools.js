@@ -229,12 +229,19 @@ export class Tools {
    * Returns events plus the fracture result (debris piece, kind of break).
    */
   chiselStrike(g, d, e, head, energy) {
+    return this.fracture._sync(this.chiselStrikeGen(g, d, e, head, energy));
+  }
+
+  /** The blow as a time-sliced job (see Fracture.begin): next() once per frame until done. */
+  *chiselStrikeGen(g, d, e, head, energy) {
     const v = this.vol;
-    const r = this.fracture.strike(g, d, e, head, energy);
+    const r = yield* this.fracture.strikeGen(g, d, e, head, energy);
+    yield* this.fracture._pause();
     const ev = { contact: r.kind === 'miss' ? 'none' : 'rock', pops: 0, chips: 0, snaps: [...(r.spines ?? [])], removed: r.size ?? 0, strike: r };
     const box = r.box ?? (r.kind === 'crush' ? this.fracture.crushBox : null);
     if (box) {
       this._relax(v.rock, ...box);
+      yield* this.fracture._pause();
       this._relax(v.fossil, ...box);
       v.touch(...box);
       this._grow(...box);
@@ -286,6 +293,9 @@ export class Tools {
     const m = 5;
     const i0 = Math.max(1, b[0] - m), j0 = Math.max(1, b[1] - m), k0 = Math.max(1, b[2] - m);
     const i1 = Math.min(v.nx - 2, b[3] + m), j1 = Math.min(v.ny - 2, b[4] + m), k1 = Math.min(v.nz - 2, b[5] + m);
+    // A big break (a split) leaves clean fracture faces, and anything cut free there is the
+    // loose-rock pass's job (dropLoose): scanning a box that size here costs a dropped frame.
+    if ((i1 - i0) * (j1 - j0) * (k1 - k0) > 6e5) return 0;
     const solid = (n) => v.rock[n] > 0 || v.fossil[n] > 0;
     let removed = 0;
     const drop = (n, i, j, k) => {
@@ -358,35 +368,42 @@ export class Tools {
    * the player pauses, not every frame.
    */
   dropLoose() {
+    return this.fracture._sync(this.dropLooseGen());
+  }
+
+  *dropLooseGen() {
     const v = this.vol, N = v.count, { sy, sz } = v;
+    const pause = () => this.fracture._pause();
     const rock = v.rock, fossil = v.fossil;
     const lab = (this._lab ??= new Int32Array(N));
     lab.fill(0);
     const stack = this.fracture.stack;
     let sp = 0;
     const mask = this.mind?.placed ? this.mind.mask : null;
-    for (let n = 0; n < N; n++) if (fossil[n] > 0 || (mask && mask[n] && rock[n] > 0)) { lab[n] = 1; stack[sp++] = n; }
+    for (let n = 0; n < N; n++) {
+      if (fossil[n] > 0 || (mask && mask[n] && rock[n] > 0)) { lab[n] = 1; stack[sp++] = n; }
+      if ((n & 262143) === 262143) yield* pause();
+    }
     if (!sp) return [];
     const nb = [1, -1, sy, -sy, sz, -sz];
-    const flood = (label) => {
-      let size = 0;
-      while (sp) {
+    // Flood from the fossil (in slices: this is the big one).
+    while (sp) {
+      for (let b = 0; b < 65536 && sp; b++) {
         const q = stack[--sp];
-        size++;
         for (let t = 0; t < 6; t++) {
           const r = q + nb[t];
           if (lab[r] || (rock[r] <= 0 && fossil[r] <= 0)) continue;
-          lab[r] = label;
+          lab[r] = 1;
           stack[sp++] = r;
         }
       }
-      return size;
-    };
-    flood(1);
+      yield* pause();
+    }
     // Everything else that is still rock is loose: group it into pieces.
     const pieces = [];
     let label = 1;
     for (let n = 0; n < N; n++) {
+      if ((n & 262143) === 262143) yield* pause();
       if (lab[n] || rock[n] <= 0) continue;
       lab[n] = ++label;
       stack[sp++] = n;

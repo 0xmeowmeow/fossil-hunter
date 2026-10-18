@@ -152,6 +152,15 @@ export class XRControl {
     c.fillText(`Exposed ${Math.round(g.exposure * 100)}%`, 24, 200);
     c.fillStyle = g.rate.integ > 0.005 ? '#e07a5a' : '#9cc58a';
     c.fillText(`Integrity ${(g.integ.value * 100).toFixed(1)}%`, 24, 238);
+    // Frame timing (for tuning on the headset): typical and worst frame of the last few seconds.
+    const p = g.perf;
+    if (p?.p50) {
+      c.font = '22px ui-monospace, monospace';
+      c.fillStyle = p.p95 > 15 ? '#e07a5a' : '#8f8778';
+      c.textAlign = 'right';
+      c.fillText(`${Math.round(1000 / p.p50)} fps · worst ${Math.round(p.worst)} ms`, 488, 238);
+      c.textAlign = 'left';
+    }
     this.hudTex.needsUpdate = true;
   }
 

@@ -10,7 +10,7 @@ const errors = [];
 p.on('pageerror', (e) => errors.push(e.message));
 await p.goto(base);
 await p.waitForFunction(() => window.fh);
-await p.waitForSelector('#career [data-go]', { timeout: 15000 });
+await p.waitForSelector('#career [data-go]', { timeout: 45000 }); // software GL in tests: ~0.6 s a frame
 const shelf0 = await p.$$eval('#career .blk', (els) => els.length);
 console.log('starter blocks on the shelf', shelf0);
 await p.click('#career [data-go]');
@@ -25,7 +25,8 @@ await p.evaluate(() => {
   g.tools.removed += 5000;
 });
 await p.waitForTimeout(2500);
-const before = await p.evaluate(() => { const g = window.fh.game, v = g.sp.vol; let s = 0; for (let n = 0; n < v.count; n += 13) s += v.rock[n]; return { sum: s, exp: g.exposure, seed: g.seed, level: g.level.id }; });
+await p.waitForFunction(() => { const g = window.fh.game; return !g.job && !(g._looseAt > 0); }, null, { timeout: 60000 }); // sliced jobs (loose rock) finished
+const before = await p.evaluate(() => { const g = window.fh.game, v = g.sp.vol; let s = 0, m = 0; for (let n = 0; n < v.count; n += 13) { s += v.rock[n]; m++; } let e = 0; for (const t of g.sp.targets) if (v.rock[t] <= 0) e++; return { sum: s, samples: m, exp: e / g.sp.targets.length, seed: g.seed, level: g.level.id }; });
 await p.click('#btnPack');
 await p.waitForFunction(() => !document.getElementById('menu').classList.contains('hidden'), null, { timeout: 15000 });
 await p.waitForTimeout(800);
@@ -36,9 +37,10 @@ console.log('day', await p.$eval('#career .museum b', (el) => el.textContent));
 await p.click('#career [data-go]');
 await p.waitForFunction(() => window.fh.game.sp && !document.getElementById('hud').classList.contains('hidden'), null, { timeout: 30000 });
 await p.waitForTimeout(2000);
-const after = await p.evaluate(() => { const g = window.fh.game, v = g.sp.vol; let s = 0; for (let n = 0; n < v.count; n += 13) s += v.rock[n]; return { sum: s, exp: g.exposure, seed: g.seed, level: g.level.id, resumed: g.resumed }; });
+await p.waitForFunction(() => { const g = window.fh.game; return !g.job && !(g._looseAt > 0); }, null, { timeout: 60000 }); // sliced jobs (loose rock) finished
+const after = await p.evaluate(() => { const g = window.fh.game, v = g.sp.vol; let s = 0, m = 0; for (let n = 0; n < v.count; n += 13) { s += v.rock[n]; m++; } let e = 0; for (const t of g.sp.targets) if (v.rock[t] <= 0) e++; return { sum: s, samples: m, exp: e / g.sp.targets.length, seed: g.seed, level: g.level.id, resumed: g.resumed }; });
 console.log('before', JSON.stringify(before), '\nafter ', JSON.stringify(after));
-const ok = after.resumed && after.seed === before.seed && Math.abs(after.sum - before.sum) / Math.abs(before.sum) < 1e-3 && Math.abs(after.exp - before.exp) < 0.01;
+const ok = after.resumed && after.seed === before.seed && Math.abs(after.sum - before.sum) / before.samples < 0.016 /* half an 8-bit save step */ && Math.abs(after.exp - before.exp) < 0.01;
 await p.screenshot({ path: `${out}/resumed.png` });
 if (errors.length) console.log('page errors', errors);
 await b.close();

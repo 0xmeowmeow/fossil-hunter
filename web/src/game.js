@@ -10,6 +10,7 @@ import { fieldGuide } from './species.js';
 import { say } from './lexicon.js';
 import { track } from './telemetry.js';
 import { DisplayBench } from './display.js';
+import { LITE } from './view.js';
 import * as save from './save.js';
 
 const TOOL_ORDER = ['chisel', 'scribe_large', 'scribe_fine', 'abrader'];
@@ -48,9 +49,13 @@ export class Game {
     this.level = level;
     this.seed = seed ?? level.specimen.seed;
     this.item = opts.item ?? null;
+    this.job = null;
     this.resumed = !!opts.state;
-    this.sp = new Specimen(level, { seed: this.seed });
+    // Lighter grids on headsets and tablets. A saved block keeps the size it was started at.
+    this.targetVoxels = opts.item?.targetVoxels ?? (LITE ? 1.8e6 : 2.6e6);
+    this.sp = new Specimen(level, { seed: this.seed, targetVoxels: this.targetVoxels });
     this.tools = new Tools(this.sp);
+    if (LITE) this.tools.fracture.debrisScale = 0.35;
     // Only this level's tools.
     if (!level.tools.includes(this.settings.tool)) this.settings.tool = level.tools[0];
     if (!level.media.includes(this.settings.media)) this.settings.media = level.media[0];
@@ -400,7 +405,8 @@ export class Game {
     }
     if (!this.sp || this.finished) return;
     dt = Math.min(dt, 1 / 20);
-    this._autosave(dt);
+    if (this.job) this._runJob();
+    else this._autosave(dt);
     const v = this.sp.vol, s = this.settings, tool = TOOLS[s.tool];
     let tip = null, dir = null, active = false, pressure = s.pressure, flow = s.flow;
 
@@ -442,6 +448,9 @@ export class Game {
       active = this.aim.active && !!hit;
       pressure = Math.min(1, s.pressure * this.aim.throttle);
     }
+
+    // While a blow is being worked out, the block is spoken for.
+    if (this.job) active = false;
 
     if (tool.kind === 'chisel') {
       this._chisel(dt, tip, dir, active, ray);
@@ -604,10 +613,43 @@ export class Game {
     const energy = E_MAX * (0.1 + 0.9 * ch.charge) * (0.35 + 0.65 * weight);
     const dn = this.view.dirToLocal(new THREE.Vector3(0, -1, 0));
     this.tools.fracture.down = [dn.x, dn.y, dn.z];
-    const ev = this.tools.chiselStrike(g, [ch.d.x, ch.d.y, ch.d.z], [ch.e.x, ch.e.y, ch.e.z], s.head, energy);
+    // The crack is worked out a few ms per frame (see _runJob), so the frame rate holds even
+    // for a big split; the tap sounds now, the break when it's found.
+    this.sfx.tap();
+    const gen = this.tools.chiselStrikeGen(g, [ch.d.x, ch.d.y, ch.d.z], [ch.e.x, ch.e.y, ch.e.z], s.head, energy);
+    this.job = { gen: this.tools.fracture.begin(gen, this._sliceMs()), done: (ev) => this._strikeDone(ev, ch, g, energy) };
+    this._runJob();
+  }
+
+  /** Per-frame budget for sliced work: tighter in a headset, where a dropped frame hurts. */
+  _sliceMs() {
+    return this.xrAim ? 4 : 8;
+  }
+
+  /** Advance the running job by one slice; finish it when done. */
+  _runJob() {
+    const j = this.job;
+    if (!j) return;
+    if (!j.gen) {
+      this.job = null;
+      j.done(j.value);
+      return;
+    }
+    const f = this.tools.fracture;
+    f.sliceMs = this._sliceMs();
+    f._t0 = performance.now();
+    const r = j.gen.next();
+    if (r.done) {
+      // Land the result next frame: the frame that finished the work has spent its budget.
+      j.gen = null;
+      j.value = r.value;
+    }
+  }
+
+  _strikeDone(ev, ch, g, energy) {
+    const v = this.sp.vol, s = this.settings;
     const r = ev.strike;
     track('strike', this.level.id, { head: s.head, charge: +ch.charge.toFixed(2), kind: r.kind, size: r.size ?? 0, fossilLost: r.fossilLost ?? 0, exp: +this.exposure.toFixed(3) });
-    this.sfx.tap();
     if (r.kind === 'crush' || r.kind === 'miss') {
       this.sfx.crush();
       if (r.kind === 'crush') this.ui.toast(ch.charge < 0.25 ? 'Too light: it only bruised the rock' : `${say('crush')} Nowhere for a crack to break out.`, '');
@@ -639,8 +681,12 @@ export class Game {
   }
 
   _dropLoose() {
+    this.job = { gen: this.tools.fracture.begin(this.tools.dropLooseGen(), this._sliceMs()), done: (pieces) => this._looseDone(pieces) };
+    this._runJob();
+  }
+
+  _looseDone(pieces) {
     const v = this.sp.vol;
-    const pieces = this.tools.dropLoose();
     this._looseSeen = this.tools.removed;
     if (!pieces.length) return;
     const down = this.view.dirToLocal(new THREE.Vector3(0, -1, 0));
@@ -668,7 +714,7 @@ export class Game {
 
     // Rock that can no longer stand breaks away; chips fly where material came off.
     this.cleanTimer -= dt;
-    if (this.cleanTimer <= 0) {
+    if (this.cleanTimer <= 0 && !this.job) {
       this.cleanTimer = 0.12;
       this.tools.cleanup();
     }
@@ -677,7 +723,7 @@ export class Game {
       this._looseSeen = this.tools.removed;
       this._looseAt = 0.35;
     }
-    if (this._looseAt > 0 && !active && (this._looseAt -= dt) <= 0) this._dropLoose();
+    if (this._looseAt > 0 && !active && !this.job && (this._looseAt -= dt) <= 0) this._dropLoose();
     if (this.tools.spawn.length) {
       this.view.spawnChips(this.tools.spawn, tool.kind === 'chisel' ? 14 : 4);
       this.tools.spawn.length = 0;
@@ -742,14 +788,14 @@ export class Game {
   // ---- saving
 
   /** Write this block's state to the storeroom (made on first save). */
-  async save(status) {
+  async save(status, { background = false } = {}) {
     if (!this.sp || this._saving) return;
     this._saving = true;
     try {
       this.item ??= save.newItem(this.level, this.seed);
-      const st = await save.encodeState(this);
+      const st = await save.encodeState(this, { background });
       const it = this.item;
-      Object.assign(it, { status: status ?? (it.status === 'prepared' ? 'prepared' : 'working'), minutes: st.minutes, exposure: this.exposure, integrity: this.integ.value, saved: Date.now() });
+      Object.assign(it, { targetVoxels: this.targetVoxels, status: status ?? (it.status === 'prepared' ? 'prepared' : 'working'), minutes: st.minutes, exposure: this.exposure, integrity: this.integ.value, saved: Date.now() });
       await save.saveState(it.id, st);
       await save.putItem(it);
       this._savedRemoved = this.tools.removed;
@@ -765,12 +811,13 @@ export class Game {
   _autosave(dt) {
     if (this.finished || this.tools.removed === this._savedRemoved) return;
     this._saveClock += dt;
-    if (this._saveClock > 60) this.save();
+    if (this._saveClock > 60) this.save(undefined, { background: true });
   }
 
   /** End the session without finishing: the block goes back on the shelf, and a day passes. */
   async packUp() {
     if (!this.sp || this.finished) return;
+    this.job = null;
     await this.save('working');
     const p = await save.profile();
     p.day++;
@@ -783,6 +830,7 @@ export class Game {
   finish() {
     if (!this.sp || this.finished) return null;
     this.finished = true;
+    this.job = null; // a blow still being worked out simply doesn't land
     this.sfx.scribe(false, 0, 0, 'none');
     this.sfx.abrader(false, 0, 0, 'none');
     this.view.showTool(null);

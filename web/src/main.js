@@ -62,11 +62,36 @@ if (params.has('level')) {
   start(lv, params.has('seed') ? Number(params.get('seed')) : undefined);
 }
 
+// Frame timing: a rolling window for the wrist readout in VR, and every 30 s of play an
+// anonymous summary to telemetry (so real headsets tell us where frames drop).
+const perf = { ms: new Float32Array(240), i: 0, n: 0, sent: performance.now(), p50: 0, p95: 0, worst: 0 };
+game.perf = perf;
+function notePerf(ms) {
+  perf.ms[perf.i] = ms;
+  perf.i = (perf.i + 1) % perf.ms.length;
+  perf.n = Math.min(perf.n + 1, perf.ms.length);
+  if ((perf.i & 15) === 0 && perf.n > 30) {
+    const a = Array.from(perf.ms.subarray(0, perf.n)).sort((x, y) => x - y);
+    perf.p50 = a[Math.floor(a.length * 0.5)];
+    perf.p95 = a[Math.floor(a.length * 0.95)];
+    perf.worst = a[a.length - 1];
+  }
+  const now = performance.now();
+  if (game.sp && now - perf.sent > 30000 && perf.n > 60) {
+    perf.sent = now;
+    track('perf', game.level?.id ?? '', {
+      xr: view.renderer.xr.isPresenting, p50: +perf.p50.toFixed(1), p95: +perf.p95.toFixed(1), worst: +perf.worst.toFixed(1),
+      voxels: game.sp.vol.count, fineMs: Math.round(view.fineMs ?? 0),
+    });
+  }
+}
+
 let last = performance.now();
 view.renderer.setAnimationLoop(() => {
   const now = performance.now();
   const dt = (now - last) / 1000;
   last = now;
+  notePerf(dt * 1000);
   xr.update(dt);
   game.update(dt);
   view.render();

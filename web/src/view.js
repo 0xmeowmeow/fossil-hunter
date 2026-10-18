@@ -9,7 +9,8 @@ import { buildFine, shadeFine } from './finefossil.js';
 import { makeMarks } from './marks.js';
 
 // Fine-shell resolution: 2x the rock grid on desktop, 1.5x on touch devices and headsets.
-const FINE = /Mobi|Android|iPad|Quest|OculusBrowser/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 ? 1.5 : 2;
+export const LITE = /Mobi|Android|iPad|Quest|OculusBrowser/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+const FINE = LITE ? 1.5 : 2;
 
 // Procedural grain: a bump from 3D value noise in object space, applied with screen-space
 // derivatives (three's perturbNormalArb). Rock is granular and matte; shell is smooth.
@@ -126,6 +127,11 @@ export class View {
     r.toneMappingExposure = 1.2;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Shadows re-render only when something that casts them changes (see render()); in a
+    // headset most frames are just head motion.
+    r.shadowMap.autoUpdate = false;
+    this.shadowDirty = true;
+    this._shSig = new Float64Array(7);
     r.xr.enabled = true;
 
     const s = (this.scene = new THREE.Scene());
@@ -149,7 +155,7 @@ export class View {
     // Movable raking key light: swing it to read relief and lustre, as under a lamp.
     const key = (this.key = new THREE.DirectionalLight(0xfff1dc, 3.4));
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.mapSize.setScalar(LITE ? 1024 : 2048);
     const sc = key.shadow.camera;
     sc.left = sc.bottom = -1.3;
     sc.right = sc.top = 1.3;
@@ -353,7 +359,24 @@ export class View {
     if (!this.skipFine) this._refreshFine(key); // the display bench only saws rock
     const v = this.sp.vol;
     const x = key % v.cx, y = Math.floor(key / v.cx) % v.cy, z = Math.floor(key / (v.cx * v.cy));
-    const data = meshChunk(this.sp, x, y, z);
+    this._applyChunk({ key, data: meshChunk(this.sp, x, y, z), fine: null });
+  }
+
+  /** Put a built chunk into the scene (see _buildChunk). */
+  _applyChunk({ key, data, fine }) {
+    if (fine) {
+      const { f, buf, idx } = fine;
+      for (const k in buf) f.buf[k].set(buf[k]);
+      const g = f.mesh.geometry;
+      for (const a of ['position', 'color', 'rough', 'metal', 'grain', 'opal']) g.attributes[a].needsUpdate = true;
+      // shadeFine returns the chunk's own index when nothing was lost, else a new trimmed one.
+      const own = idx === f.ch.idx;
+      if (own ? f.idx !== f.ch.idx : true) {
+        g.setIndex(new THREE.BufferAttribute(idx, 1));
+        f.idx = idx;
+      }
+    }
+    this.shadowDirty = true;
     const old = this.chunks.get(key);
     if (old) {
       this.off.remove(old);
@@ -380,15 +403,42 @@ export class View {
   /** Remesh up to `budgetMs` worth of dirty chunks this frame. */
   updateDirty(budgetMs = 6) {
     const v = this.sp.vol;
-    if (!v.dirty.size) return;
-    // A big break (a split) must appear all at once: half-updated chunks look like walls.
-    if (v.dirty.size > 20) budgetMs = Infinity;
     const t0 = performance.now();
+    // A big break (a split) must appear all at once (half-updated chunks look like walls), but
+    // building it all in one frame stalls a headset: build off-screen over a few frames, then
+    // swap everything in together.
+    if (!this.batch && v.dirty.size > 20) {
+      this.batch = { keys: [...v.dirty], i: 0, built: [] };
+      v.dirty.clear();
+    }
+    const b = this.batch;
+    if (b) {
+      while (b.i < b.keys.length && performance.now() - t0 < budgetMs) b.built.push(this._buildChunk(b.keys[b.i++]));
+      if (b.i < b.keys.length) return;
+      for (const c of b.built) this._applyChunk(c);
+      this.batch = null;
+      return;
+    }
+    if (!v.dirty.size) return;
     for (const key of v.dirty) {
       v.dirty.delete(key);
       this._remesh(key);
       if (performance.now() - t0 > budgetMs) break;
     }
+  }
+
+  /** Mesh one chunk (and reshade its fine shell) without touching the scene yet. */
+  _buildChunk(key) {
+    const v = this.sp.vol;
+    const x = key % v.cx, y = Math.floor(key / v.cx) % v.cy, z = Math.floor(key / (v.cx * v.cy));
+    let fine = null;
+    const f = !this.skipFine && this.fine?.get(key);
+    if (f) {
+      const tmp = {};
+      for (const k in f.buf) tmp[k] = new f.buf[k].constructor(f.buf[k].length);
+      fine = { f, buf: tmp, idx: shadeFine(this.sp, f.ch, tmp) };
+    }
+    return { key, data: meshChunk(this.sp, x, y, z), fine };
   }
 
   // ---- transforms between world and volume-local space
@@ -695,7 +745,7 @@ export class View {
     g.setAttribute('rough', new THREE.BufferAttribute(data.rough, 1));
     g.setAttribute('metal', new THREE.BufferAttribute(data.metal, 1));
     g.setAttribute('grain', new THREE.BufferAttribute(data.grain, 1));
-    if (data.extra) g.setAttribute('extra', new THREE.BufferAttribute(data.extra, 2));
+    if (data.extra) g.setAttribute('extra', new THREE.BufferAttribute(data.extra, 3));
     g.setIndex(new THREE.BufferAttribute(data.idx, 1));
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, this.material);
@@ -826,6 +876,15 @@ export class View {
 
   render() {
     this._objUniforms();
+    // Shadows: only when the block, its pose, the lamp or flying debris changed.
+    const q = this.root.quaternion, k = this.key.position, sg = this._shSig;
+    const now = [q.x, q.y, q.z, q.w, k.x, k.y, k.z];
+    let moved = false;
+    for (let i = 0; i < 7; i++) if (Math.abs(now[i] - sg[i]) > 1e-5) { moved = true; sg[i] = now[i]; }
+    if (moved || this.shadowDirty || this.debris.length || this.showcaseOn) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowDirty = false;
+    }
     if (this.showcaseOn && this.showG) {
       const now = performance.now();
       const dt = Math.min(0.05, (now - (this._lastShow ?? now)) / 1000);

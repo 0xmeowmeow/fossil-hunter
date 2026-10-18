@@ -73,11 +73,11 @@ export async function ensureCareer(LEVELS) {
   const p = await profile();
   if (p.started) return p;
   p.started = Date.now();
-  const starters = ['wheeler', 'beecher', 'calvert', 'cincinnati'];
-  for (const id of starters) {
-    const lv = LEVELS.find((l) => l.id === id);
-    if (lv) await putItem(newItem(lv, Math.floor(Math.random() * 1e6), { from: 'the museum you inherited' }));
-  }
+  const starters = ['wheeler', 'beecher', 'calvert', 'cincinnati']
+    .map((id) => LEVELS.find((l) => l.id === id)).filter(Boolean)
+    .map((lv) => newItem(lv, Math.floor(Math.random() * 1e6), { from: 'the museum you inherited' }));
+  // One transaction for the lot (each one costs at least a frame on a busy page).
+  await tx('items', 'readwrite', (s) => starters.forEach((it) => s.put(it)));
   return saveProfile(p);
 }
 
@@ -92,22 +92,30 @@ async function gunzip(u8) {
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
 
+const CHUNK = 1 << 18;
+const breathe = () => new Promise((r) => setTimeout(r, 0));
+
 const q8 = (x) => Math.max(-127, Math.min(127, Math.round(x * Q)));
 
 /**
  * Everything the player has changed about a block. Fields: rock and fossil XORed with the
  * fresh block, frost and microcracking as bytes.
  */
-export async function encodeState(game) {
+export async function encodeState(game, { background = false } = {}) {
   const sp = game.sp, v = sp.vol, n = v.count;
   const buf = new Uint8Array(n * 4);
   const rock = buf.subarray(0, n), fos = buf.subarray(n, 2 * n), frost = buf.subarray(2 * n, 3 * n), dmg = buf.subarray(3 * n);
-  for (let i = 0; i < n; i++) {
-    // XOR with the fresh block: reversible, and zero (compresses to nothing) where untouched.
-    rock[i] = (q8(v.rock[i]) ^ q8(v.rock0[i])) & 255;
-    fos[i] = (q8(v.fossil[i]) ^ q8(v.fossil0[i])) & 255;
-    frost[i] = Math.min(255, v.frost[i]);
-    dmg[i] = Math.round(Math.min(1, v.dmg[i]) * 255);
+  // In the background (autosave), hand the thread back between chunks so a headset never stalls.
+  for (let i0 = 0; i0 < n; i0 += CHUNK) {
+    const i1 = Math.min(n, i0 + CHUNK);
+    for (let i = i0; i < i1; i++) {
+      // XOR with the fresh block: reversible, and zero (compresses to nothing) where untouched.
+      rock[i] = (q8(v.rock[i]) ^ q8(v.rock0[i])) & 255;
+      fos[i] = (q8(v.fossil[i]) ^ q8(v.fossil0[i])) & 255;
+      frost[i] = Math.min(255, v.frost[i]);
+      dmg[i] = Math.round(Math.min(1, v.dmg[i]) * 255);
+    }
+    if (background && i1 < n) await breathe();
   }
   const m = game.mind;
   return {

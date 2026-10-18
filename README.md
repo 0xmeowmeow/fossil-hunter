@@ -101,6 +101,8 @@ Rules and numbers follow [`docs/preparation-survey.md`](docs/preparation-survey.
 - `node test/fracture.test.js LEVEL`: chisel scenarios. A centre blow crushes, an edge
   blow flakes, and a side blow along the bedding splits.
 - `node test/smoke.mjs`, `node test/xr-smoke.mjs` and `node test/career.mjs`: browser checks with the server (career: storeroom, pack up, resume)
+- `node test/loose.test.js`: loose rock falls away; sliced jobs give identical results
+- `node test/frames.mjs`: frame times through a big chisel split on the GPU (performance probe)
   running. The XR test emulates a Quest 3 with Meta's IWER and drives the controllers.
 - Setup: `npm i`, then `npx playwright install chromium`.
 
