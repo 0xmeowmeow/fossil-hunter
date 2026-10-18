@@ -835,12 +835,10 @@ export class Game {
     if (!this.sp || this.finished) return;
     this.job = null;
     await this.save('working');
-    const p = await save.profile();
-    p.day++;
-    await save.saveProfile(p);
-    track('pack_up', this.level.id, { exp: +this.exposure.toFixed(3), day: p.day });
+    const r = await save.endDay();
+    track('pack_up', this.level.id, { exp: +this.exposure.toFixed(3), day: r.day + 1, visitors: r.visitors });
     this.sp = null;
-    this.ui.showMenu(`Packed up. The block is on your storeroom shelf, ${Math.floor(this.exposure * 100)}% exposed. Day ${p.day} begins.`);
+    this.ui.showMenu(`Packed up. The block is on your storeroom shelf, ${Math.floor(this.exposure * 100)}% exposed. Day ${r.day + 1} begins.`);
   }
 
   finish() {
@@ -861,9 +859,7 @@ export class Game {
       this.item.day = (await save.profile()).day;
       await this.save('prepared');
       await this.bakeDisplay();
-      const p = await save.profile();
-      p.day++;
-      await save.saveProfile(p);
+      await save.endDay();
     })();
     return g;
   }

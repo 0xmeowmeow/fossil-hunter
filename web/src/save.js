@@ -54,6 +54,24 @@ export async function saveProfile(p) {
   return p;
 }
 
+/**
+ * End the day: visitors come to see what's on display and the gift shop sells; the takings,
+ * reputation and new stock go into the profile, and the day moves on. Returns the day's result.
+ */
+export async function endDay() {
+  const { dayResult } = await import('./economy.js');
+  const p = await profile();
+  const shown = (await listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum');
+  const r = dayResult(p, shown);
+  p.funds = Math.round((p.funds + r.earned) * 100) / 100;
+  p.rep = (p.rep ?? 0) + r.repGain;
+  p.stock = r.stock;
+  p.day++;
+  p.lastDay = r;
+  await saveProfile(p);
+  return r;
+}
+
 // ---- storeroom
 
 export const listItems = () => all('items');

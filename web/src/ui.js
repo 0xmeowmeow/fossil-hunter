@@ -256,7 +256,20 @@ export class UI {
     const shelf = items.filter((it) => it.status === 'raw' || it.status === 'working').sort((a, b) => (b.saved ?? b.created) - (a.saved ?? a.created));
     const done = items.filter((it) => it.status === 'prepared');
     const shown = done.filter((it) => it.where === 'museum').length;
-    let html = `<div class="museum"><div><b>Day ${p.day}</b>of your career</div><div><b>$${p.funds}</b>funds</div>` +
+    const { JUNK, TICKET } = await import('./economy.js');
+    let html = '';
+    const y = p.lastDay;
+    if (y) {
+      const soldList = Object.entries(y.sold ?? {}).map(([id, n]) => `${n} ${JUNK.find((j) => j.id === id)?.name.toLowerCase() ?? id}`).join(', ');
+      html += `<div class="daycard"><div class="cat">Day ${y.day} at the museum</div>` +
+        `<p><b>${y.visitors} visitor${y.visitors === 1 ? '' : 's'}</b> came through the doors ($${y.tickets} in tickets at $${TICKET}).` +
+        (y.shop ? ` The gift shop sold ${soldList}: <b>$${Math.round(y.shop)}</b>.`
+          : !y.visitors ? ''
+          : Object.values(y.stock ?? {}).some((n) => n > 0) ? ' Nobody bought anything from the gift shop.'
+          : ' The gift shop had nothing to sell: stock it below.') +
+        (y.star ? ` Everyone wanted to see the <i>${esc(y.star)}</i>.` : ' With nothing on display, there was little to see.') + `</p></div>`;
+    }
+    html += `<div class="museum"><div><b>Day ${p.day}</b>of your career</div><div><b>$${Math.round(p.funds)}</b>funds</div>` +
       `<div><b>${p.rep}</b>reputation</div><div><b>${p.knowledge}</b>knowledge</div>` +
       `<div><b>${done.length}</b>prepared · ${shown} on display</div></div>`;
     html += `<div class="row" style="margin:-6px 0 16px"><button id="btnMuseum" class="on">Visit your museum</button></div>`;
@@ -274,9 +287,43 @@ export class UI {
     }
     if (!shelf.length) html += `<p class="fine">The shelf is empty. Open a drawer below, or check the mail.</p>`;
     html += `</div>`;
+    // Prepared pieces: on display or in the drawer.
+    if (done.length) {
+      html += `<h3 class="sub">Prepared specimens</h3><div class="shelf">`;
+      for (const it of done.sort((a, b) => (b.value ?? 0) - (a.value ?? 0))) {
+        const lv = lvOf(it);
+        const on = it.where === 'museum';
+        html += `<div class="blk"><div class="cat">${esc(lv?.place ?? '')}</div><div class="sp"><i>${esc(it.name || lv?.title || 'Specimen')}</i></div>` +
+          `<div class="fine">Valued at $${it.value ?? 0}${it.where === 'sell' ? ' · sold' : ''}</div>` +
+          (it.where === 'sell' ? '' : `<div class="row"><button data-show="${it.id}" class="${on ? '' : 'on'}">${on ? 'Take off display' : 'Put on display'}</button></div>`) + `</div>`;
+      }
+      html += `</div>`;
+    }
+    // The gift shop: junk in bulk, sold at a markup to whoever comes in.
+    html += `<h3 class="sub">Gift shop</h3><p class="fine">Bought in bulk, sold to visitors. Visitors come to see the specimens on display; the shop just makes them pay twice.</p><div class="shelf">`;
+    for (const j of JUNK) {
+      const have = p.stock?.[j.id] ?? 0, cost = Math.round(j.cost * j.lot);
+      html += `<div class="blk"><div class="sp">${j.icon} ${esc(j.name)}</div><div class="fine">${have} in stock · sells at $${j.price}</div>` +
+        `<div class="row"><button data-buy="${j.id}" ${p.funds < cost ? 'disabled' : ''}>Buy ${j.lot} for $${cost}</button></div></div>`;
+    }
+    html += `</div>`;
     box.innerHTML = html;
     for (const b of box.querySelectorAll('[data-go]')) b.onclick = () => this.resume(b.dataset.go);
     $('btnMuseum').onclick = () => this.visitMuseum();
+    for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {
+      const it = await save.getItem(b.dataset.show);
+      it.where = it.where === 'museum' ? 'keep' : 'museum';
+      await save.putItem(it);
+      this.renderCareer();
+    };
+    for (const b of box.querySelectorAll('[data-buy]')) b.onclick = async () => {
+      const { restock } = await import('./economy.js');
+      const np = restock(await save.profile(), b.dataset.buy);
+      if (!np) return this.toast("Not enough funds for that lot yet");
+      await save.saveProfile(np);
+      import('./telemetry.js').then((t) => t.track('restock', '', { id: b.dataset.buy }));
+      this.renderCareer();
+    };
     // The hero's main button picks up where you left off.
     const cur = shelf.find((it) => it.status === 'working');
     const hero = $('btnStart');

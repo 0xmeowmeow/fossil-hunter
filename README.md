@@ -105,6 +105,7 @@ Rules and numbers follow [`docs/preparation-survey.md`](docs/preparation-survey.
 - `node test/frames.mjs`: frame times through a big chisel split on the GPU (performance probe)
 - `node test/bake.test.js`: a prepared specimen baked to a light display mesh
 - `node test/museum.mjs`: finish two specimens, display them, walk the museum (screenshots in `../build/museum`)
+- `node test/economy.test.js`: what displays and the gift shop bring in per day
   running. The XR test emulates a Quest 3 with Meta's IWER and drives the controllers.
 - Setup: `npm i`, then `npx playwright install chromium`.
 
