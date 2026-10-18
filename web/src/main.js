@@ -15,11 +15,16 @@ const game = new Game(view, sfx, ui);
 const input = new Input(document.getElementById('view'), document.getElementById('pad'), game);
 const xr = new XRControl(view, game, ui);
 
-function start(level, seed) {
+function start(level, seed, opts) {
   ui.showLoading();
   // Let the loading screen paint before the (synchronous) build.
-  setTimeout(() => game.load(level, seed), 350);
+  setTimeout(() => game.load(level, seed, opts), 350);
 }
+
+// Never lose work: save when the page is hidden (tab switch, headset off, app killed).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && game.sp && !game.finished) game.save();
+});
 
 ui.bind(game, input, start);
 

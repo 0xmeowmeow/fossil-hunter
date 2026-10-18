@@ -182,6 +182,14 @@
   .museum { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.025); margin-bottom: 18px; }
   .museum div { font: 12px var(--mono); color: var(--muted); letter-spacing: .04em; }
   .museum b { display: block; font: 600 26px var(--serif); color: var(--text); }
+  .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .shelf .blk { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: rgba(255,255,255,.025); display: flex; flex-direction: column; gap: 6px; }
+  .shelf .blk .cat { font: 11px var(--mono); color: var(--muted); letter-spacing: .04em; }
+  .shelf .blk .sp { font: 600 17px var(--serif); }
+  .shelf .blk .bar { height: 3px; background: #3a342a; border-radius: 2px; }
+  .shelf .blk .bar i { display: block; height: 100%; background: var(--brass); border-radius: 2px; }
+  .shelf .blk .row { display: flex; gap: 6px; margin-top: 4px; }
+  .shelf .blk .row button { padding: 6px 11px; font-size: 13px; }
   .opts { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 22px 0; color: var(--muted); }
   .opts input { accent-color: var(--brass); }
   details { margin-top: 14px; color: #cfc4ae; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -277,6 +285,7 @@
     </div>
     <div class="actions">
       <button id="btnVR2" class="hidden">Enter VR</button>
+      <button id="btnPack" title="Put the block back on the storeroom shelf, exactly as it is, and end the day">Pack up</button>
       <button id="btnFinish" class="on">Finish</button>
       <button id="btnMenu">Menu</button>
     </div>
@@ -352,6 +361,15 @@
       <div class="scrollhint">Real techniques · invented trilobites · works on iPad, PC and Quest</div>
     </div>
   </div>
+  <section class="block" id="careerSec">
+    <div class="wrap">
+      <div class="tag">Your museum</div>
+      <h2>The storeroom</h2>
+      <p class="lead">Blocks waiting on the shelf, and work in progress. Pack up any time: the block goes back on the shelf exactly as you left it.</p>
+      <div id="career"></div>
+    </div>
+  </section>
+
   <section class="block" id="drawersSec">
     <div class="wrap">
       <div class="tag">The collection</div>

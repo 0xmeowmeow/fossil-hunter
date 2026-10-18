@@ -1,6 +1,7 @@
 // DOM: menu, HUD, toasts, results.
 
 import { LEVELS, MATRICES, SPECIAL } from './data.js';
+import * as save from './save.js';
 import { outlineTop, shapes } from './trilobite.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,6 +36,7 @@ export class UI {
     for (const b of document.querySelectorAll('#media button')) b.onclick = () => game.setMedia(b.dataset.media);
     for (const b of document.querySelectorAll('#heads button')) b.onclick = () => game.setHead(b.dataset.head);
     $('btnFinish').onclick = () => game.finish();
+    $('btnPack').onclick = () => game.packUp();
     $('btnWet').onclick = () => game.wetten();
     $('btnLeft').onclick = () => {
       game.setShowLeft(!game.showLeft);
@@ -80,6 +82,7 @@ export class UI {
     };
     $('btnDrawers').onclick = () => $('drawersSec').scrollIntoView({ behavior: 'smooth' });
     this.renderLevels();
+    this.renderCareer();
     this.syncSettings(game);
   }
 
@@ -99,7 +102,7 @@ export class UI {
     import('./telemetry.js').then((t) => t.track('parcel_open', m.id, { waited: i }));
     mail.splice(i, 1);
     saveJSON('fh-mail', mail);
-    this.start(SPECIAL[m.id], m.seed);
+    this.start(SPECIAL[m.id], m.seed, { item: save.newItem(SPECIAL[m.id], m.seed, { from: m.from }) });
   }
 
   renderLevels() {
@@ -220,7 +223,62 @@ export class UI {
     }
   }
 
-  showMenu() {
+  /** Day, funds, reputation, knowledge, and the storeroom shelf. */
+  async renderCareer() {
+    const box = $('career');
+    if (!box) return;
+    let p, items;
+    try {
+      p = await save.ensureCareer(LEVELS);
+      items = await save.listItems();
+    } catch (e) {
+      box.innerHTML = `<p class="fine">Saving isn't available in this browser (${esc(String(e.message || e))}).</p>`;
+      return;
+    }
+    const lvOf = (it) => (it.special ? SPECIAL[it.level] : LEVELS.find((l) => l.id === it.level));
+    const shelf = items.filter((it) => it.status === 'raw' || it.status === 'working').sort((a, b) => (b.saved ?? b.created) - (a.saved ?? a.created));
+    const done = items.filter((it) => it.status === 'prepared');
+    const shown = done.filter((it) => it.where === 'museum').length;
+    let html = `<div class="museum"><div><b>Day ${p.day}</b>of your career</div><div><b>$${p.funds}</b>funds</div>` +
+      `<div><b>${p.rep}</b>reputation</div><div><b>${p.knowledge}</b>knowledge</div>` +
+      `<div><b>${done.length}</b>prepared · ${shown} on display</div></div>`;
+    html += `<div class="shelf">`;
+    for (const it of shelf) {
+      const lv = lvOf(it);
+      if (!lv) continue;
+      const pct = Math.floor((it.exposure ?? 0) * 100);
+      const pips = '●'.repeat(lv.difficulty) + '○'.repeat(5 - lv.difficulty);
+      html += `<div class="blk"><div class="cat">${esc(lv.place)} · ${pips}</div><div class="sp">${esc(it.name || lv.title)}</div>` +
+        (it.status === 'working'
+          ? `<div class="fine">${pct}% exposed · ${(it.integrity * 100).toFixed(1)}% integrity · ${Math.round(it.minutes)} min so far</div><div class="bar"><i style="width:${pct}%"></i></div>`
+          : `<div class="fine">${it.from ? `From ${esc(it.from)}. ` : ''}Unopened.</div>`) +
+        `<div class="row"><button class="on" data-go="${it.id}">${it.status === 'working' ? 'Continue' : 'Prepare it'}</button></div></div>`;
+    }
+    if (!shelf.length) html += `<p class="fine">The shelf is empty. Open a drawer below, or check the mail.</p>`;
+    html += `</div>`;
+    box.innerHTML = html;
+    for (const b of box.querySelectorAll('[data-go]')) b.onclick = () => this.resume(b.dataset.go);
+    // The hero's main button picks up where you left off.
+    const cur = shelf.find((it) => it.status === 'working');
+    const hero = $('btnStart');
+    if (cur) {
+      hero.textContent = `Continue: ${cur.name || lvOf(cur)?.title || 'your block'}`;
+      hero.onclick = () => this.resume(cur.id);
+    }
+  }
+
+  /** Take a block off the shelf: resume its saved state if there is one. */
+  async resume(id) {
+    const it = await save.getItem(id);
+    if (!it) return;
+    const lv = it.special ? SPECIAL[it.level] : LEVELS.find((l) => l.id === it.level);
+    const state = it.status === 'working' ? await save.loadState(id) : null;
+    this.start(lv, it.seed, { item: it, state });
+  }
+
+  showMenu(msg) {
+    if (msg) setTimeout(() => this.toast(msg, 'good'), 300);
+    this.renderCareer();
     $('celebrate').classList.add('hidden');
     this.game?.view.celebrate(false);
     this.game?.view.showcaseMode(true);
@@ -252,7 +310,9 @@ export class UI {
     // Intro card: where we are, and what's new.
     $('introPlace').textContent = `${lv.place} · difficulty ${'●'.repeat(lv.difficulty)}${'○'.repeat(5 - lv.difficulty)}`;
     $('introTitle').textContent = lv.title;
-    $('introBlurb').textContent = lv.blurb;
+    $('introBlurb').textContent = game.resumed
+      ? `Back on the bench where you left it: ${Math.round((performance.now() - game.started) / 60000)} minutes of work so far. ${lv.blurb}`
+      : lv.blurb;
     $('introFresh').innerHTML = lv.fresh.length
       ? `<p class="lead" style="margin:14px 0 6px">New on this bench</p><div class="fresh">${lv.fresh.map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join('')}</div>`
       : '';
@@ -497,6 +557,19 @@ export class UI {
     col.push({ level: game.level.id, name: `${card.genus} ${card.species}`, value: g.value, where, score, date: new Date().toISOString().slice(0, 10) });
     saveJSON('fh-collection', col);
     if (where === 'sell') saveJSON('fh-wallet', loadJSON('fh-wallet', 0) + g.value);
+    // The career record: where the piece went, and the money if sold.
+    (async () => {
+      if (game.item) {
+        game.item.where = where;
+        game.item.name = `${card.genus} ${card.species}`;
+        await save.putItem(game.item);
+      }
+      if (where === 'sell') {
+        const p = await save.profile();
+        p.funds += g.value;
+        await save.saveProfile(p);
+      }
+    })();
     // The first finished specimen brings a parcel from Lightning Ridge.
     if (!loadJSON('fh-ridge-sent', false)) {
       saveJSON('fh-ridge-sent', true);

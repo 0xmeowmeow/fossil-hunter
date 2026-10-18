@@ -10,6 +10,7 @@ import { fieldGuide } from './species.js';
 import { say } from './lexicon.js';
 import { track } from './telemetry.js';
 import { DisplayBench } from './display.js';
+import * as save from './save.js';
 
 const TOOL_ORDER = ['chisel', 'scribe_large', 'scribe_fine', 'abrader'];
 const MEDIA_ORDER = ['bicarb', 'dolomite', 'alox'];
@@ -39,9 +40,15 @@ export class Game {
     this.rate = { removed: 0, integ: 0 };
   }
 
-  load(level, seed) {
+  /**
+   * Put a block on the bench. opts.item: its storeroom record (made on first save if absent);
+   * opts.state: saved work to resume.
+   */
+  async load(level, seed, opts = {}) {
     this.level = level;
     this.seed = seed ?? level.specimen.seed;
+    this.item = opts.item ?? null;
+    this.resumed = !!opts.state;
     this.sp = new Specimen(level, { seed: this.seed });
     this.tools = new Tools(this.sp);
     // Only this level's tools.
@@ -56,23 +63,33 @@ export class Game {
     this.notes = [];
     this.guess = { matrix: null, fossil: null };
     this.mindTimer = 0;
+    this.started = performance.now();
+    this.usage = {};
+    this.milestones = new Set();
+    this.found = new Set([0]);
+    if (opts.state) {
+      try {
+        await save.applyState(this, opts.state);
+      } catch (e) {
+        console.warn('could not resume this block', e);
+        this.resumed = false;
+      }
+    }
     this.view.showcaseMode(false);
     document.getElementById('showlabel')?.classList.add('hidden');
     this.view.setSpecimen(this.sp);
     this.view.setMind(null);
-    this.started = performance.now();
     this.finished = false;
     this.bench?.close();
     this.bench = null;
     this.exposure = 0;
-    this.found = new Set([0]);
-    this.milestones = new Set();
     this.combo = 0;
+    this._savedRemoved = this.tools.removed;
+    this._saveClock = 0;
     this.integ = integrity(this.sp);
     this.lastRemoved = 0;
     this.lastContact = null;
     this.mm3PerVoxel = (this.sp.vol.voxel * BODY_MM) ** 3;
-    this.usage = {};
     track('level_start', level.id, { seed: this.seed, count: this.sp.count, partial: this.sp.completeness < 0.97, opal: this.sp.opalFrac ?? null });
     this.ui.onLoaded(this);
   }
@@ -383,6 +400,7 @@ export class Game {
     }
     if (!this.sp || this.finished) return;
     dt = Math.min(dt, 1 / 20);
+    this._autosave(dt);
     const v = this.sp.vol, s = this.settings, tool = TOOLS[s.tool];
     let tip = null, dir = null, active = false, pressure = s.pressure, flow = s.flow;
 
@@ -721,6 +739,47 @@ export class Game {
     this.ui.readout(this, tip, probe, active);
   }
 
+  // ---- saving
+
+  /** Write this block's state to the storeroom (made on first save). */
+  async save(status) {
+    if (!this.sp || this._saving) return;
+    this._saving = true;
+    try {
+      this.item ??= save.newItem(this.level, this.seed);
+      const st = await save.encodeState(this);
+      const it = this.item;
+      Object.assign(it, { status: status ?? (it.status === 'prepared' ? 'prepared' : 'working'), minutes: st.minutes, exposure: this.exposure, integrity: this.integ.value, saved: Date.now() });
+      await save.saveState(it.id, st);
+      await save.putItem(it);
+      this._savedRemoved = this.tools.removed;
+      this._saveClock = 0;
+    } catch (e) {
+      console.warn('save failed', e);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  /** Autosave: after a minute of work with changes, and whenever the page is hidden. */
+  _autosave(dt) {
+    if (this.finished || this.tools.removed === this._savedRemoved) return;
+    this._saveClock += dt;
+    if (this._saveClock > 60) this.save();
+  }
+
+  /** End the session without finishing: the block goes back on the shelf, and a day passes. */
+  async packUp() {
+    if (!this.sp || this.finished) return;
+    await this.save('working');
+    const p = await save.profile();
+    p.day++;
+    await save.saveProfile(p);
+    track('pack_up', this.level.id, { exp: +this.exposure.toFixed(3), day: p.day });
+    this.sp = null;
+    this.ui.showMenu(`Packed up. The block is on your storeroom shelf, ${Math.floor(this.exposure * 100)}% exposed. Day ${p.day} begins.`);
+  }
+
   finish() {
     if (!this.sp || this.finished) return null;
     this.finished = true;
@@ -731,6 +790,15 @@ export class Game {
     g.minutes = (performance.now() - this.started) / 60000;
     track('finish', this.level.id, { exp: +g.exposure.toFixed(3), integ: +g.integrity.toFixed(3), min: +g.minutes.toFixed(2), value: g.value, usage: this.usage, stats: this.tools.stats });
     this.ui.showResults(this, g);
+    // Into the storeroom as a prepared piece; a day passes.
+    (async () => {
+      this.item ??= save.newItem(this.level, this.seed);
+      this.item.value = g.value;
+      await this.save('prepared');
+      const p = await save.profile();
+      p.day++;
+      await save.saveProfile(p);
+    })();
     return g;
   }
 
