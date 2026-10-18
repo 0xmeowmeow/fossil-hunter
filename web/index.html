@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="Fossil Hunter: a fossil preparation bench. Split the shale, read the grain, and free a trilobite nobody has ever seen.">
+<title>Fossil Hunter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400;1,9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Permanent+Marker&family=Caveat:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #121110; --bg2: #1a1815; --panel: rgba(26, 24, 21, 0.88); --panel2: rgba(34, 31, 27, 0.92);
+    --line: rgba(255, 236, 200, 0.11); --line2: rgba(255, 236, 200, 0.2);
+    --text: #f1e8d6; --muted: #a39883; --dim: #6f6656;
+    --brass: #d9a94e; --brass2: #f0c873; --bad: #e07a5a; --good: #9cc58a; --sky: #7ec4ff;
+    --paper: #efe4cb; --ink: #2a2318;
+    --serif: "Fraunces", Georgia, serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --accent: var(--brass);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 15px/1.45 var(--sans); -webkit-user-select: none; user-select: none; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  button { font: 500 14px/1.2 var(--sans); color: var(--text); background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 13px; cursor: pointer; touch-action: manipulation; transition: background .15s, border-color .15s, transform .1s; }
+  button:hover { background: rgba(255,255,255,0.09); border-color: var(--line2); }
+  button:active { transform: translateY(1px); }
+  button.on { background: var(--brass); color: #20180b; border-color: var(--brass); font-weight: 600; }
+  button.big { font-size: 16px; padding: 13px 22px; border-radius: 12px; }
+  button.ghost { background: transparent; }
+  .hidden { display: none !important; }
+  .mono { font-family: var(--mono); }
+  .tag { font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brass); }
+
+  /* ---------------- HUD ---------------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  #top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; gap: 10px;
+    align-items: center; justify-content: space-between; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  #top .title { padding: 7px 14px; min-width: 0; }
+  #top .title b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 600 17px/1.2 var(--serif); }
+  #top .title span { color: var(--muted); font: 11px var(--mono); letter-spacing: .04em; }
+  #status { display: flex; gap: 8px; }
+  #wrapup { display: flex; gap: 6px; padding: 5px; align-items: center; }
+  #wrapup.hidden { display: none; }
+  #wrapup button { padding: 6px 11px; font-size: 13px; }
+  .meter { padding: 7px 13px; white-space: nowrap; transition: border-color .2s; font-size: 13px; color: var(--muted); }
+  .meter b { color: var(--text); font: 600 15px var(--sans); margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .meter .bar { height: 3px; background: #3a342a; border-radius: 2px; margin-top: 5px; width: 110px; }
+  .meter .bar i { display: block; height: 100%; background: var(--brass); border-radius: 2px; width: 0; transition: width .3s; }
+  #integ .bar i { background: var(--good); }
+  #integ.drop { border-color: var(--bad); }
+  #integ.drop b { color: var(--bad); }
+  #top .actions { display: flex; gap: 8px; }
+
+  #left { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+  .group { display: flex; gap: 5px; flex-wrap: wrap; padding: 5px; max-width: 380px; }
+  .group button { padding: 8px 11px; font-size: 13px; border-color: transparent; background: transparent; display: flex; align-items: center; gap: 7px; }
+  .group button:hover { background: rgba(255,255,255,0.06); }
+  .group button.on { background: var(--brass); color: #20180b; }
+  .group button svg { width: 18px; height: 18px; flex: none; }
+  #padwrap, #anglewrap { padding: 10px 12px 8px; }
+  #pad { position: relative; width: 168px; height: 168px; border-radius: 50%; touch-action: none;
+    background: radial-gradient(circle at 50% 50%, rgba(217,169,78,0.12), rgba(217,169,78,0.02) 70%), rgba(255,255,255,0.02);
+    border: 1px solid var(--line); }
+  #pad::before, #pad::after { content: ""; position: absolute; background: var(--line); }
+  #pad::before { left: 50%; top: 8%; bottom: 8%; width: 1px; }
+  #pad::after { top: 50%; left: 8%; right: 8%; height: 1px; }
+  #pad .knob { position: absolute; width: 32px; height: 32px; margin: -16px 0 0 -16px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--brass2), var(--brass)); box-shadow: 0 0 0 4px rgba(217,169,78,0.2), 0 4px 10px rgba(0,0,0,.4); pointer-events: none; }
+  #pad .lx, #pad .ly { position: absolute; font: 10px var(--mono); color: var(--muted); pointer-events: none; letter-spacing: .03em; }
+  #pad .lx { bottom: -2px; right: 6px; }
+  #pad .ly { top: 4px; left: 50%; transform: translateX(6px); }
+  #readout, #angleRead { font: 11px var(--mono); color: var(--muted); margin-top: 6px; text-align: center; letter-spacing: .03em; }
+  #controls { display: flex; gap: 9px; align-items: flex-end; }
+  #angle { position: relative; width: 108px; height: 108px; border-radius: 50%; touch-action: none;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0 6%, rgba(255,255,255,0.02) 7% 100%); border: 1px solid var(--line); }
+  #angle .knob { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%;
+    background: #e8e0d0; box-shadow: 0 0 0 4px rgba(232,224,208,0.16); pointer-events: none; }
+  #angle .stick { position: absolute; left: 50%; top: 50%; height: 3px; background: #e8e0d0; transform-origin: 0 50%; opacity: .55; pointer-events: none; }
+  #lightbox { position: absolute; right: 12px; top: 70px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  #lightbox button { min-width: 112px; }
+  #light { position: relative; width: 84px; height: 84px; border-radius: 50%; touch-action: none; margin-bottom: 14px;
+    background: radial-gradient(circle, rgba(255,230,170,0.06), transparent 70%), var(--panel); border: 1px solid var(--line); }
+  #light .knob { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #ffe7b0;
+    box-shadow: 0 0 14px 5px rgba(255,220,150,0.45); pointer-events: none; }
+  #light span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  #modelbar { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--panel); border: 1px solid rgba(126,196,255,0.4); border-radius: 14px; padding: 9px 11px; display: flex; flex-direction: column; gap: 7px; align-items: center; max-width: 560px; }
+  #modelbar .hint { font-size: 12px; color: #a9cff0; text-align: center; }
+  #modelbar .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  #modelbar button { padding: 6px 10px; font-size: 13px; }
+  button.model.on { background: var(--sky); border-color: var(--sky); color: #0f1a24; }
+  .side { position: absolute; top: 70px; right: 136px; width: 340px; max-height: calc(100% - 96px); overflow-y: auto; padding: 12px 14px; }
+  .side h3 { margin: 0 0 4px; font: 600 19px var(--serif); }
+  .side p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+  #notebook { font-size: 13px; }
+  #notebook h4 { margin: 14px 0 5px; font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brass); }
+  #notebook .tests { display: flex; gap: 6px; flex-wrap: wrap; }
+  #notebook .tests button { padding: 6px 10px; font-size: 13px; }
+  #notebook .obs { margin: 4px 0; padding-left: 16px; }
+  #notebook .obs li { margin: 3px 0; color: #d8cfbd; }
+  #notebook select { width: 100%; margin: 3px 0 6px; padding: 7px; background: #211e1a; color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  #notebook .step b { color: var(--text); }
+  #notebook .step { margin: 4px 0 8px; color: #d8cfbd; }
+  .card { display: grid; grid-template-columns: 84px 1fr; gap: 10px; padding: 9px; border-radius: 11px; background: rgba(255,255,255,0.035); margin-bottom: 8px; }
+  .card.out { opacity: 0.35; }
+  .card.fit { outline: 1px solid var(--sky); }
+  .card canvas { width: 84px; height: 104px; border-radius: 8px; background: #121110; }
+  .card i { font: italic 600 15px var(--serif); color: var(--text); }
+  .card .sz { font: 11px var(--mono); color: var(--muted); }
+  .card ul { margin: 4px 0 6px; padding-left: 16px; font-size: 12px; color: #cfc6b4; }
+  .card .acts { display: flex; gap: 6px; }
+  .card .acts button { padding: 4px 8px; font-size: 12px; }
+  /* Docked at the bottom centre: never on top of the work. */
+  #tipread { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); pointer-events: none;
+    font-size: 12px; line-height: 1.35; background: rgba(22,20,18,0.82); border: 1px solid var(--line); border-radius: 12px;
+    padding: 7px 12px; width: min(420px, calc(100% - 420px)); min-width: 220px; display: none; }
+  #tipread .row { display: grid; grid-template-columns: 62px 1fr; gap: 6px; align-items: center; }
+  @media (max-width: 900px) { #tipread { bottom: auto; top: 72px; width: min(360px, calc(100% - 24px)); } }
+  #tipread .b { height: 4px; border-radius: 2px; background: #3a342a; overflow: hidden; }
+  #tipread .b i { display: block; height: 100%; width: 0; }
+  #tipread .rm i { background: var(--brass); }
+  #tipread .ig i { background: var(--bad); }
+  #tipread .touch { color: var(--muted); margin-bottom: 3px; font: 11px var(--mono); }
+  #toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%) translateY(-6px); padding: 9px 18px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--line2); opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; font: italic 15px var(--serif); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.bad { color: var(--bad); }
+  #toast.good { color: var(--brass2); border-color: rgba(217,169,78,.6); font-size: 18px; }
+
+  /* ---------------- landing ---------------- */
+  .overlay { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; }
+  #menu { background:
+      radial-gradient(1200px 700px at 72% 42%, transparent 0, rgba(18,17,16,0.15) 45%, rgba(18,17,16,0.9) 80%),
+      linear-gradient(90deg, rgba(18,17,16,0.92) 0, rgba(18,17,16,0.55) 42%, transparent 62%); }
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 max(20px, env(safe-area-inset-left)); }
+  .masthead { display: flex; justify-content: space-between; align-items: center; padding-top: max(20px, env(safe-area-inset-top)); }
+  .mark { display: flex; align-items: center; gap: 10px; font: 600 15px var(--serif); letter-spacing: .02em; }
+  .mark svg { width: 28px; height: 28px; }
+  .mark small { font: 10px var(--mono); color: var(--muted); letter-spacing: .14em; text-transform: uppercase; margin-left: 4px; }
+  .hero { min-height: calc(100vh - 70px); min-height: calc(100svh - 70px); display: flex; flex-direction: column; justify-content: center; max-width: 560px; padding: 30px 0 80px; }
+  .hero h1 { font: 800 clamp(40px, 6.4vw, 78px)/0.98 var(--serif); letter-spacing: -0.02em; margin: 14px 0 18px; font-variation-settings: "opsz" 144; }
+  .hero h1 em { font-weight: 400; color: var(--brass2); }
+  .hero p { font-size: 18px; color: #d6ccb8; max-width: 470px; margin: 0 0 26px; }
+  .hero .cta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .scrollhint { font: 11px var(--mono); color: var(--dim); letter-spacing: .14em; text-transform: uppercase; margin-top: 46px; }
+  /* Museum label for the showcase specimen */
+  .label { font-family: var(--serif); color: var(--ink); background: var(--paper); border-radius: 3px; padding: 12px 16px 11px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.06);
+    background-image: linear-gradient(transparent 95%, rgba(0,0,0,0.04) 95%); background-size: 100% 22px; }
+  .label .cat { font: 500 10px var(--mono); letter-spacing: .14em; color: #7a6a4c; text-transform: uppercase; }
+  .label .sp { font: italic 600 21px/1.15 var(--serif); margin: 3px 0 2px; }
+  .label .ln { font: 13px var(--serif); color: #4b4030; }
+  #showlabel { position: fixed; right: max(24px, 5vw); bottom: max(26px, 6vh); width: 290px; transform: rotate(-1.2deg); transition: opacity .6s; }
+  #showlabel.hidden { display: block !important; opacity: 0; pointer-events: none; }
+  section.block { padding: 70px 0 30px; }
+  section.block h2 { font: 600 34px/1.1 var(--serif); margin: 6px 0 8px; }
+  section.block > p.lead, .lead { color: var(--muted); margin: 0 0 24px; max-width: 620px; }
+  .drawers { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .drawer { text-align: left; padding: 0; background: linear-gradient(180deg, #2a2620, #1f1c18); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    display: flex; flex-direction: column; font: inherit; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+  .drawer:hover { border-color: rgba(217,169,78,.45); transform: translateY(-2px); background: linear-gradient(180deg, #2f2a23, #221f1a); }
+  .drawer .pull { height: 6px; margin: 10px auto 0; width: 64px; border-radius: 6px; background: linear-gradient(90deg, #6b5a3a, #a88a52, #6b5a3a); opacity: .8; }
+  .drawer .body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .drawer .label { transform: rotate(-.6deg); }
+  .drawer .label .sp { font-style: normal; font-size: 19px; }
+  .drawer .meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: auto; }
+  .pips { display: flex; gap: 3px; }
+  .pips i { width: 9px; height: 9px; border-radius: 2px; background: #3d362c; }
+  .pips i.f { background: var(--brass); }
+  .drawer .best { font: 11px var(--mono); color: var(--muted); text-align: right; }
+  .drawer .best b { color: var(--brass2); font-weight: 500; }
+  .drawer .blurb { font-size: 13px; color: #cfc4ae; }
+  .drawer .tools { font: 10px var(--mono); color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+  .museum { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.025); margin-bottom: 18px; }
+  .museum div { font: 12px var(--mono); color: var(--muted); letter-spacing: .04em; }
+  .museum b { display: block; font: 600 26px var(--serif); color: var(--text); }
+  .opts { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 22px 0; color: var(--muted); }
+  .opts input { accent-color: var(--brass); }
+  details { margin-top: 14px; color: #cfc4ae; border-top: 1px solid var(--line); padding-top: 12px; }
+  details summary { cursor: pointer; color: var(--text); font: 600 18px var(--serif); list-style: none; }
+  details summary::before { content: "+ "; color: var(--brass); }
+  details[open] summary::before { content: "– "; }
+  details li { margin: 7px 0; }
+  footer { padding: 40px 0 60px; color: var(--dim); font: 12px var(--mono); letter-spacing: .04em; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  footer a { color: var(--muted); }
+
+  /* ---------------- intro / loading / results ---------------- */
+  #intro, #loading, #results { background: radial-gradient(900px 600px at 50% 40%, rgba(18,17,16,0.78), rgba(18,17,16,0.96)); display: flex; align-items: center; justify-content: center; padding: 24px 18px; }
+  .sheet { width: 100%; max-width: 680px; }
+  .sheet h1 { font: 700 44px/1.05 var(--serif); margin: 10px 0 10px; letter-spacing: -0.01em; }
+  .sheet p.lead { font-size: 17px; color: #d6ccb8; }
+  .kicker { font: 500 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--brass); }
+  .fresh { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; background: rgba(255,255,255,0.035); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 6px 0; }
+  .fresh b { color: var(--brass2); white-space: nowrap; font: 600 16px var(--serif); }
+  .fresh span { color: #d8cfbd; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 18px 0; }
+  #loading .sheet { text-align: center; }
+  .spinner { width: 54px; height: 54px; margin: 0 auto 20px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--brass); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadTip { font: italic 17px/1.4 var(--serif); color: #d6ccb8; max-width: 460px; margin: 8px auto 0; }
+  .stats { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 6px 18px; background: rgba(255,255,255,0.035); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 15px; margin: 12px 0; font-size: 14px; }
+  .stats div:nth-child(odd) { color: var(--muted); }
+  .stats div:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+  .value { font: 700 40px var(--serif); color: var(--brass); }
+
+  /* ---------------- celebration ---------------- */
+  #celebrate { position: fixed; inset: 0; pointer-events: none; }
+  #celebrate .cpanel { pointer-events: auto; position: absolute; left: max(20px, env(safe-area-inset-left)); top: 50%; transform: translateY(-50%);
+    width: min(430px, calc(100% - 40px)); max-height: calc(100% - 40px); overflow-y: auto;
+    background: var(--panel2); border: 1px solid var(--line2); border-radius: 18px; padding: 20px 22px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  @media (max-width: 700px) { #celebrate .cpanel { top: auto; bottom: 12px; transform: none; max-height: 62%; } }
+  #celebrate .label { margin: 8px 0 12px; transform: rotate(-.8deg); }
+  #celebrate .label .sp { font-size: 26px; }
+  #celebrate .feat { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+  #celebrate .feat span { font: 11px var(--mono); padding: 4px 8px; border-radius: 999px; background: rgba(217,169,78,0.12); color: #ecd29a; }
+  #celebrate .big { font: 700 38px var(--serif); color: var(--brass2); }
+  #celebrate .choices { display: grid; gap: 8px; margin-top: 10px; }
+  #celebrate .choices button { text-align: left; padding: 11px 13px; }
+  #celebrate .bench-cta { display: block; width: 100%; text-align: left; margin: 10px 0 4px; padding: 13px 15px; font: 600 16px var(--serif);
+    background: linear-gradient(180deg, rgba(217,169,78,0.28), rgba(217,169,78,0.12)); border-color: var(--brass); color: var(--text); }
+  #celebrate .bench-cta small { display: block; font: 12px var(--sans); color: var(--muted); margin-top: 3px; }
+  #benchPanel input[type=range] { width: 100%; margin: 4px 0 10px; accent-color: var(--brass); }
+  #benchPanel .seg { display: flex; gap: 4px; margin: 4px 0 10px; flex-wrap: wrap; }
+  #benchPanel .seg button { padding: 6px 10px; font-size: 13px; }
+  #benchPanel .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #celebrate .choices small { display: block; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  #celebrate input[type=text], #celebrate input[type=email] { width: 100%; padding: 10px 11px; margin: 4px 0 8px; background: #211e1a; color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; font: inherit; -webkit-user-select: text; user-select: text; }
+  #celebrate .fine { font-size: 12px; color: var(--muted); }
+  #celebrate table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  #celebrate td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  #celebrate td.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 12px; }
+  #celebrate tr.me td { color: var(--brass2); font-weight: 600; }
+  #confetti { position: absolute; inset: 0; overflow: hidden; }
+  #confetti i { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; opacity: .9; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: .8; } }
+
+  @media (max-width: 760px) {
+    #menu { background: linear-gradient(180deg, rgba(18,17,16,0.35) 0, rgba(18,17,16,0.75) 55%, rgba(18,17,16,0.95) 75%); }
+    .hero { justify-content: flex-end; min-height: calc(100svh - 70px); padding-bottom: 40px; }
+    #showlabel { right: 16px; left: 16px; width: auto; top: 76px; bottom: auto; }
+    .drawers { grid-template-columns: 1fr; }
+    .side { right: 12px; left: 12px; width: auto; top: auto; bottom: 12px; max-height: 55%; }
+  }
+  @media (max-width: 560px) {
+    #pad { width: 136px; height: 136px; }
+    .meter .bar { width: 64px; }
+    #top .title span { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="top">
+    <div class="title pane"><b id="lvTitle"></b><span id="lvPlace"></span></div>
+    <div id="status">
+      <div class="meter pane">Exposed <b id="expPct">0%</b><div class="bar"><i id="expBar"></i></div></div>
+      <div class="meter pane" id="integ">Integrity <b id="intPct">100%</b><div class="bar"><i id="intBar" style="width:100%"></i></div></div>
+      <div class="pane hidden" id="wrapup">
+        <button id="btnLeft" title="Make the rock still lying on the shell glow">Show leftovers</button>
+        <button id="btnSweep" class="on" title="Brush away the last crumbs of rock on the shell and wrap up">Sweep the rest</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="btnVR2" class="hidden">Enter VR</button>
+      <button id="btnFinish" class="on">Finish</button>
+      <button id="btnMenu">Menu</button>
+    </div>
+  </div>
+  <div id="left">
+    <div class="group pane" id="tools">
+      <button data-tool="chisel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20l5-1 10-10-4-4L5 15z"/><path d="M13 7l4 4"/></svg>Chisel</button>
+      <button data-tool="scribe_large"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21l3-1 12-12-2-2L4 18z"/><path d="M17 3l4 4"/><path d="M8 13l3 3"/></svg>Large scribe</button>
+      <button data-tool="scribe_fine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20l1.5-.5L18 7l-1-1L4.5 18.5z"/><path d="M16 4l4 4"/></svg>Fine scribe</button>
+      <button data-tool="abrader"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21l7-7"/><path d="M10 14l3-3"/><circle cx="16" cy="8" r=".8"/><circle cx="19" cy="6" r=".8"/><circle cx="18" cy="10" r=".8"/><circle cx="15" cy="4" r=".8"/><circle cx="20" cy="3" r=".6"/></svg>Abrader</button>
+    </div>
+    <div class="group pane" id="heads">
+      <button data-head="wedge" title="Narrow splitting wedge: opens bedding planes and splits along its blade">Wedge</button>
+      <button data-head="bolster" title="Wide bolster: pops flakes off edges, lifts slabs">Bolster</button>
+      <button data-head="point" title="Point: concentrated blow, flakes or crushes">Point</button>
+    </div>
+    <div class="group pane" id="media">
+      <button data-media="bicarb">Bicarb</button>
+      <button data-media="dolomite">Dolomite</button>
+      <button data-media="alox">Al₂O₃</button>
+    </div>
+    <div id="controls">
+      <div id="padwrap" class="pane">
+        <div id="pad"><div class="knob"></div><span class="lx" id="padX">Air →</span><span class="ly" id="padY">↑ Flow</span></div>
+        <div id="readout"></div>
+      </div>
+      <div id="anglewrap" class="pane">
+        <div id="angle"><div class="stick"></div><div class="knob"></div></div>
+        <div id="angleRead">Angle</div>
+      </div>
+    </div>
+  </div>
+  <div id="lightbox">
+    <div id="light"><div class="knob"></div><span>Lamp</span></div>
+    <button id="btnWet" title="Wet the rock: it darkens where shell lies just beneath, so you can see where to work">Wet surface</button>
+    <button id="btnNotes">Notebook</button>
+    <button id="btnGuide">Field guide</button>
+    <button id="btnModel" class="model">Model</button>
+  </div>
+  <div id="guide" class="side pane hidden"></div>
+  <div id="notebook" class="side pane hidden"></div>
+  <div id="modelbar" class="hidden">
+    <div class="hint">Your model of the fossil. Drag inside it to move it, drag at its edge to pull or push the outline. Air scribes and the abrader won't cut inside it; the chisel will.</div>
+    <div class="btns">
+      <button data-m="rotl">⟲</button><button data-m="rotr">⟳</button>
+      <button data-m="smaller">−</button><button data-m="bigger">+</button>
+      <button data-m="lower">Flatter</button><button data-m="higher">Taller</button>
+      <button data-m="ovoid">Reset</button><button data-m="hide">Hide</button>
+      <button data-m="done" class="on">Done</button>
+    </div>
+  </div>
+  <div id="tipread"></div>
+  <div id="toast"></div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="wrap">
+    <div class="masthead">
+      <div class="mark">
+        <svg viewBox="0 0 32 32" fill="none" stroke="#d9a94e" stroke-width="1.5"><path d="M16 3c6 0 9 4 9 9v8c0 5-4 9-9 9s-9-4-9-9v-8c0-5 3-9 9-9z"/><path d="M16 9v19"/><path d="M8 14h16M7.5 18h17M8 22h16M9.5 26h13"/><path d="M11 9c1.5-1.5 8.5-1.5 10 0"/></svg>
+        Fossil Hunter <small>prep lab · beta</small>
+      </div>
+      <button id="btnVR" class="hidden ghost">Enter VR</button>
+    </div>
+    <div class="hero">
+      <div class="tag">A fossil preparation bench</div>
+      <h1>Free what the rock has kept for <em>450 million years.</em></h1>
+      <p>Split the shale along its bedding. Read the grain in raking light. Chip, spray and stop exactly at the shell, then find out what you've uncovered. Every animal is generated: no one has seen yours before.</p>
+      <div class="cta">
+        <button id="btnStart" class="on big">Open the first drawer</button>
+        <button id="btnDrawers" class="big ghost">Browse the drawers ↓</button>
+      </div>
+      <div class="scrollhint">Real techniques · invented trilobites · works on iPad, PC and Quest</div>
+    </div>
+  </div>
+  <section class="block" id="drawersSec">
+    <div class="wrap">
+      <div class="tag">The collection</div>
+      <h2>Eight drawers, each harder to read</h2>
+      <p class="lead">The first block is soft shale around a hard golden shell: almost anything works. By the last, rock and shell are the same mineral, the same colour, welded together, and only a change in lustre tells you where to stop.</p>
+      <div id="levels"></div>
+      <div class="opts">
+        <label><input type="checkbox" id="randomSeed"> A new specimen every time I open a drawer</label>
+      </div>
+      <details>
+        <summary>How to hold the tools</summary>
+        <ul>
+          <li><b>iPad:</b> left thumb on the big circle sets air pressure (→) and abrasive flow / stroke rate (↑); the small circle sets the tool's angle. Both stay where you let go. One finger on the rock uses the tool. Two fingers turn, pinch to zoom, twist to roll. An Apple Pencil's tilt is the tool's angle, and its pressure throttles the air.</li>
+          <li><b>PC:</b> left mouse uses the tool, right-drag turns, wheel zooms. Keys 1–4 pick tools, Q/W/E abrasives (or chisel heads), arrows move the pressure pad, [ ] tilt the tool, , . swing it round.</li>
+          <li><b>Quest:</b> left grip holds and turns the block, left stick magnifies and swings the lamp, left trigger wets it. The right controller is the tool: trigger is air or hammer force, grip is flow or stroke rate. A changes tool, B abrasive or chisel head. Left Y finishes.</li>
+          <li><b>Lamp:</b> drag the sun to move it. Low light rakes across relief and shows lustre. <b>Wet surface</b> darkens the rock and glosses it for a while, as preparators do. Where shell lies just under thin rock, it shows through as a dark shadow.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>How rock and shell behave</summary>
+        <ul>
+          <li><b>Hammer and chisel</b> break rock the way rock breaks. Press to place the chisel, drag to lean it, hold to wind up, release to strike. Near an edge a flake comes off; straight down into the middle of a face it only crushes. The wedge held flat on a bedding line, struck from the side, can lift a whole layer off. Faint dark lines are joints: cracks like to follow them. Where the crack meets the fossil it runs over the shell if the matrix parts cleanly, and through it where it's welded.</li>
+          <li><b>Abrader</b> cuts only what is softer than its powder. Bicarbonate is softer than calcite and pyrite; dolomite cuts limestone but frosts calcite; aluminium oxide cuts almost everything.</li>
+          <li><b>Air scribes</b> chip matrix along their line. A low, lifting angle pops thin matrix off the shell; straight down into the shell marks it. Spines snap once the rock holding them is gone.</li>
+          <li><b>Read the line.</b> The gold reticle is where the tool acts. The faint dotted line shows what lies beyond it inside the rock (amber where it would pass through shell).</li>
+          <li><b>Integrity</b> is how intact the fossil is, and it multiplies the specimen's value. <b>Exposed</b> is how much of its upper surface is free.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+  <div class="wrap">
+    <footer>
+      <span>Fossil Hunter · an experiment from <a href="/">meow-meow.io</a></span>
+      <span>Techniques from real preparation labs; animals generated from a seed. The game sends anonymous play statistics (no names, emails or addresses) to help tune it.</span>
+    </footer>
+  </div>
+</div>
+
+<div id="showlabel" class="label hidden">
+  <div class="cat" id="showCat">On the bench today</div>
+  <div class="sp" id="showName">—</div>
+  <div class="ln" id="showLine"></div>
+</div>
+
+<div id="intro" class="overlay hidden">
+  <div class="sheet">
+    <div class="kicker" id="introPlace"></div>
+    <h1 id="introTitle"></h1>
+    <p class="lead" id="introBlurb"></p>
+    <div id="introFresh"></div>
+    <div class="row"><button id="btnBegin" class="on big">Take it to the bench</button></div>
+  </div>
+</div>
+
+<div id="loading" class="overlay hidden">
+  <div class="sheet">
+    <div class="spinner"></div>
+    <div class="kicker">Unpacking the block</div>
+    <div id="loadTip"></div>
+  </div>
+</div>
+
+<div id="celebrate" class="hidden">
+  <div id="confetti"></div>
+  <div class="cpanel" id="cpanel"></div>
+</div>
+
+<div id="results" class="overlay hidden">
+  <div class="sheet">
+    <h1 id="resTitle"></h1>
+    <div class="value" id="resValue"></div>
+    <div class="stats" id="resStats"></div>
+    <div class="row">
+      <button id="btnRetry">Try again</button>
+      <button id="btnNew">New specimen</button>
+      <button id="btnNext">Next level</button>
+      <button id="btnBack">Menu</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

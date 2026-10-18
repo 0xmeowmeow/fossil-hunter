@@ -1,0 +1,7 @@
+# Fossil Hunter (meow-meow.io/trilobite). Code changes with every update: always revalidate,
+# so nobody ends up with half an old version.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|php)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
