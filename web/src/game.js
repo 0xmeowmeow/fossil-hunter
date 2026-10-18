@@ -63,7 +63,7 @@ export class Game {
     // Lighter grids on headsets and tablets. A saved block keeps the size it was started at.
     this.targetVoxels = opts.item?.targetVoxels ?? (LITE ? 1.8e6 : 2.6e6);
     this.sci = sci;
-    this.sp = new Specimen(level, { seed: this.seed, targetVoxels: this.targetVoxels });
+    this.sp = new Specimen(level, { seed: this.seed, targetVoxels: this.targetVoxels, sawn: opts.item?.sawn });
     this.features = featuresFor(level, this.sci);
     this.sp.repair = this.sci.has('consolidant');
     this.tools = new Tools(this.sp);

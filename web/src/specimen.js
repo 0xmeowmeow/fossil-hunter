@@ -55,7 +55,9 @@ export function gradeOpal(rng) {
 
 export class Specimen {
   /** targetVoxels sets the grid resolution: more voxels = finer detail, more memory and work. */
-  constructor(level, { targetVoxels = 2.6e6, seed } = {}) {
+  /** sawn: { dir: [x, y], at } — the block was sawn out of a quarry face through the animal
+   *  (dig sites): `at` of its footprint is gone on that side, and the block ends at a flat face. */
+  constructor(level, { targetVoxels = 2.6e6, seed, sawn } = {}) {
     this.level = level;
     const s = { ...level.specimen, seed: seed ?? level.specimen.seed };
     this.matrix = MATRICES[level.matrix];
@@ -105,6 +107,8 @@ export class Specimen {
         p.cut = { dir: [Math.cos(a), Math.sin(a)], at: rng.uniform(0.05, 0.3) };
       }
     }
+    if (sawn) plan[0].cut = { dir: sawn.dir, at: sawn.at };
+    this.sawn = !!sawn;
     this.spec = plan[0].spec;
     this.count = same;
     const place = (minRWorld) => {
@@ -205,9 +209,25 @@ export class Specimen {
     this._fillFossil();
     this._strata(rng);
     this._joints(rng);
+    if (this.sawn) this._saw(asm.members[0].cut);
     this._parts();
     this._targets();
     this._shell();
+  }
+
+  /** A flat saw face where the block was cut from the quarry: no rock beyond the plane. */
+  _saw(cut) {
+    if (!cut) return;
+    const v = this.vol;
+    for (let k = 0; k < v.nz; k++) for (let j = 0; j < v.ny; j++) for (let i = 0; i < v.nx; i++) {
+      const [x, y] = v.pos(i, j, k);
+      const d = ((x - cut.c[0]) * cut.n[0] + (y - cut.c[1]) * cut.n[1] - cut.k) / v.voxel;
+      if (d > -LIM) {
+        const n = v.idx(i, j, k);
+        v.rock[n] = Math.min(v.rock[n], -d);
+      }
+    }
+    v.rock0 = v.rock.slice();
   }
 
   _chips(rng) {

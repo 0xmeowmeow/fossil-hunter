@@ -244,6 +244,111 @@ export class UI {
   }
 
   /** Day, funds, reputation, knowledge, and the storeroom shelf. */
+  /** Dig sites: leases you hold, and sites you could lease. */
+  async _digHtml(p) {
+    const D = await import('./dig.js');
+    let html = `<h3 class="sub">Dig sites</h3><p class="fine">Lease a deposit, read the quarry face, and saw out your own blocks. Three blocks a day; a trip to the face ends the day.</p><div class="shelf">`;
+    (p.leases ?? []).forEach((l, i) => {
+      const s = D.findSite(l.site);
+      if (!s) return;
+      const lv = LEVELS.find((x) => x.id === s.level);
+      html += `<div class="blk contract on"><div class="cat">${esc(lv?.place ?? '')} · your lease</div><div class="sp">${esc(s.name)}</div>` +
+        `<div class="fine">${l.cutsLeft} cut${l.cutsLeft === 1 ? '' : 's'} left on the lease${l.cutsToday >= 3 ? ' · done for today' : ''}.</div>` +
+        `<div class="row"><button class="on" data-dig="${i}">Go to the face</button></div></div>`;
+    });
+    for (const s of D.SITES) {
+      if ((p.leases ?? []).some((l) => l.site === s.id)) continue;
+      const lv = LEVELS.find((x) => x.id === s.level), locked = (p.rep ?? 0) < s.rep;
+      html += `<div class="blk${locked ? ' gone' : ''}"><div class="cat">${esc(lv?.place ?? '')} · ${'●'.repeat(lv?.difficulty ?? 1)}${'○'.repeat(5 - (lv?.difficulty ?? 1))}</div><div class="sp">${esc(s.name)}</div>` +
+        `<div class="fine">${s.cuts} cuts for $${s.lease}.${locked ? ` Needs ${s.rep} reputation.` : ''}</div>` +
+        `<div class="row"><button data-lease="${s.id}" ${locked || p.funds < s.lease ? 'disabled' : ''}>Take the lease</button></div></div>`;
+    }
+    return html + `</div>`;
+  }
+
+  /** At the quarry face of lease i. */
+  async openDig(i) {
+    const D = await import('./dig.js'), U = await import('./digui.js');
+    let st = await save.leaseFace(i);
+    if (!st) return;
+    const lv = LEVELS.find((x) => x.id === st.site.level);
+    $('digPlace').textContent = lv?.place ?? '';
+    $('digName').textContent = st.site.name;
+    $('digNote').textContent = `A collector's tip: ${st.site.note}`;
+    $('digLog').innerHTML = '';
+    $('menu').classList.add('hidden');
+    $('showlabel').classList.add('hidden');
+    $('digSite').classList.remove('hidden');
+    const cv = $('digCanvas'), rock = U.paintRock(st.site, st.f, st.l.seed);
+    let mode = 'saw', hover = null, busy = false;
+    const count = () => {
+      const today = 3 - (st.l.cutsToday ?? 0);
+      $('digCount').textContent = `${Math.min(today, st.l.cutsLeft)} cut${today === 1 ? '' : 's'} left today · ${st.l.cutsLeft} on the lease · ${st.l.looks ?? 0} close look${st.l.looks === 1 ? '' : 's'} left today`;
+    };
+    const draw = () => U.drawFace(cv, rock, st, mode === 'saw' ? hover : null);
+    const log = (html) => $('digLog').insertAdjacentHTML('afterbegin', `<p>${html}</p>`);
+    const at = (e) => {
+      const r = cv.getBoundingClientRect();
+      return U.fromPx(((e.clientX - r.left) / r.width) * U.SIZE[0], ((e.clientY - r.top) / r.height) * U.SIZE[1]);
+    };
+    const setMode = (m) => {
+      mode = m;
+      $('digSaw').classList.toggle('on', m === 'saw');
+      $('digLook').classList.toggle('on', m === 'look');
+      cv.style.cursor = m === 'saw' ? 'crosshair' : 'zoom-in';
+      draw();
+    };
+    $('digSaw').onclick = () => setMode('saw');
+    $('digLook').onclick = () => setMode('look');
+    cv.onmousemove = (e) => {
+      const [x, y] = at(e);
+      hover = y >= 0 && y <= 1 ? [x, y] : null;
+      draw();
+    };
+    cv.onmouseleave = () => { hover = null; draw(); };
+    cv.onclick = async (e) => {
+      if (busy) return;
+      const [x, y] = at(e);
+      if (y < 0 || y > 1) return;
+      busy = true;
+      try {
+        if (mode === 'look') {
+          const c = U.signAt(st, x, y);
+          if (!c) log('Just rock here, as far as you can tell.');
+          else {
+            const err = await save.digLook(i, c.col, c.row);
+            if (err) log(esc(err));
+            else log(`<b>Through the hand lens:</b> ${esc(U.signText(c))}`);
+          }
+        } else {
+          const r = await save.digCut(i, x, y);
+          if (typeof r === 'string') log(esc(r));
+          else {
+            log(r.result === 'barren' ? 'You saw the block out and split it: <b>barren</b>. Just rock. It goes on the spoil heap.'
+              : r.result === 'whole' ? `<b>A good block.</b> Something lies inside, well clear of the saw cuts. It's on your shelf.`
+              : `<b>The saw went through something.</b> Shell shows on the cut face. Part of it is still in the quarry wall. The block is on your shelf.`);
+            import('./telemetry.js').then((t) => t.track('dig_cut', st.site.id, { result: r.result }));
+          }
+        }
+        st = await save.leaseFace(i);
+        count();
+        draw();
+      } finally {
+        busy = false;
+      }
+    };
+    $('digHome').onclick = async () => {
+      $('digSite').classList.add('hidden');
+      const cutToday = st.l.cutsToday ?? 0;
+      if (!cutToday) return this.showMenu();
+      const r = await save.endDay();
+      this.showMenu(`Home from ${st.site.name}. Day ${r.day + 1} begins.`);
+    };
+    setMode('saw');
+    count();
+    draw();
+  }
+
   /** The tour editor: a route through the cases, a card at each stop, and its rating. */
   async _tourHtml(p, done, lvOf) {
     const T = await import('./tours.js');
@@ -432,7 +537,7 @@ export class UI {
       html += `<div class="blk"><div class="cat">${esc(lv.place)}${ageOf(p, lv)} · ${pips}</div><div class="sp">${esc(it.name || lv.title)}</div>` +
         (it.status === 'working'
           ? `<div class="fine">${pct}% exposed · ${(it.integrity * 100).toFixed(1)}% integrity · ${Math.round(it.minutes)} min so far</div><div class="bar"><i style="width:${pct}%"></i></div>`
-          : `<div class="fine">${it.from ? `From ${esc(it.from)}. ` : ''}Unopened.</div>`) +
+          : `<div class="fine">${it.from ? `From ${esc(it.from)}. ` : ''}${it.sawn ? 'The saw went through something. ' : ''}Unopened.</div>`) +
         (it.contract ? `<div class="fine tag">For a contract</div>` : '') +
         `<div class="row"><button class="on" data-go="${it.id}">${it.status === 'working' ? 'Continue' : 'Prepare it'}</button></div></div>`;
     }
@@ -453,6 +558,7 @@ export class UI {
       }
       html += `</div>`;
     }
+    html += await this._digHtml(p);
     html += await this._tourHtml(p, done, lvOf);
     html += await this._science(p);
     // The gift shop: junk in bulk, sold at a markup to whoever comes in.
@@ -478,6 +584,8 @@ export class UI {
     act('[data-deliver]', 'deliver', save.deliverContract);
     act('[data-lot]', 'lot', save.buyLot);
     act('[data-learn]', 'learn', save.learnNode);
+    act('[data-lease]', 'lease', save.takeLease);
+    for (const b of box.querySelectorAll('[data-dig]')) b.onclick = () => this.openDig(+b.dataset.dig);
     this._bindTour(box, p, done);
     $('btnMuseum').onclick = () => this.visitMuseum();
     for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {

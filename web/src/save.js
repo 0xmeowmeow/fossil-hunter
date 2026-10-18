@@ -78,6 +78,8 @@ export async function endDay() {
   p.stock = r.stock;
   p.day++;
   p.lastDay = r;
+  // A new day at the dig: cuts and close looks come back; spent leases are given up.
+  p.leases = (p.leases ?? []).filter((l) => l.cutsLeft > 0).map((l) => ({ ...l, cutsToday: 0, looks: 4 }));
   // The board turns over and loans come home.
   const { refreshBoard, returnLoans } = await import('./contracts.js');
   r.expired = refreshBoard(p).expired;
@@ -131,6 +133,69 @@ export async function deliverContract(id) {
   if (typeof r === 'string') return r;
   await tx('items', 'readwrite', (s) => r.items.forEach((it) => s.put(it)));
   await saveProfile(r.p);
+  return null;
+}
+
+// ---- dig sites (dig.js has the rules)
+
+/** Take out a lease on a site. Returns an error or null. */
+export async function takeLease(siteId) {
+  const D = await import('./dig.js');
+  const r = D.lease(await profile(), siteId, Math.floor(Math.random() * 1e9));
+  if (typeof r === 'string') return r;
+  await saveProfile(r.p);
+  return null;
+}
+
+/** The face of a lease as it stands now (cells already cut out are marked taken). */
+export async function leaseFace(i) {
+  const D = await import('./dig.js');
+  const p = await profile(), l = p.leases?.[i];
+  if (!l) return null;
+  const site = D.findSite(l.site), f = D.face(site, l.seed);
+  for (const c of l.cuts) if (c.col !== undefined) {
+    const cell = f.cells.find((x) => x.col === c.col && x.row === c.row);
+    if (cell) cell.taken = true;
+  }
+  return { p, l, site, f };
+}
+
+/**
+ * Saw a block out at (x, y) on lease i. Returns { result, item? } or an error string. A block
+ * with something in it goes on the shelf; barren rock goes on the spoil heap.
+ */
+export async function digCut(i, x, y) {
+  const D = await import('./dig.js');
+  const st = await leaseFace(i);
+  if (!st) return 'No such lease.';
+  const { p, l, site, f } = st;
+  if (l.cutsLeft <= 0) return 'The lease is used up.';
+  if (l.cutsToday >= 3) return 'That is three blocks today: head home and come back tomorrow.';
+  const r = D.cut(f, x, y);
+  l.cutsLeft--;
+  l.cutsToday = (l.cutsToday ?? 0) + 1;
+  let item = null;
+  if (!r.barren) {
+    const lv = await levelOf(site.level);
+    item = newItem(lv, r.cell.seed, { from: site.name, dug: true, sawn: r.sawn ?? null });
+    await putItem(item);
+  }
+  l.cuts.push({ x, y, col: r.cell?.col, row: r.cell?.row, result: r.barren ? 'barren' : r.whole ? 'whole' : 'sawn' });
+  p.leases = p.leases.map((x, k) => (k === i ? l : x));
+  await saveProfile(p);
+  return { result: r.barren ? 'barren' : r.whole ? 'whole' : 'sawn', item };
+}
+
+/** Look closely at a sign on the face (a few looks a day). */
+export async function digLook(i, col, row) {
+  const p = await profile(), l = p.leases?.[i];
+  if (!l) return 'No such lease.';
+  l.looked ??= [];
+  if (l.looked.some(([c, r]) => c === col && r === row)) return null;
+  if ((l.looks ?? 0) <= 0) return 'No more close looks today.';
+  l.looks--;
+  l.looked.push([col, row]);
+  await saveProfile(p);
   return null;
 }
 
