@@ -10,7 +10,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
-const LEVELS = ['beecher', 'wheeler', 'calvert', 'cincinnati', 'lyme', 'phacops', 'spiny', 'ghost', 'ridge'];
+const LEVELS = ['beecher', 'wheeler', 'calvert', 'cincinnati', 'lyme', 'phacops', 'spiny', 'ghost', 'ridge', 'glossopteris', 'crawfordsville'];
 
 function out($code, $data) {
   http_response_code($code);
