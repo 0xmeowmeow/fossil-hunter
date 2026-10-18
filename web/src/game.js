@@ -858,6 +858,9 @@ export class Game {
       this.item.value = g.value;
       this.item.day = (await save.profile()).day;
       await this.save('prepared');
+      // The grade's own numbers, which contracts check against.
+      Object.assign(this.item, { exposure: g.exposure, integrity: g.integrity, snapped: g.snapped ?? 0 });
+      await save.putItem(this.item);
       await this.bakeDisplay();
       await save.endDay();
     })();

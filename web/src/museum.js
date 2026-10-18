@@ -158,7 +158,7 @@ export class Museum {
 
   /** Put the museum pieces in their cases (best first in the middle). */
   async _fill() {
-    const items = (await save.listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum');
+    const items = (await save.listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum' && !it.loanedTo);
     items.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
     for (const c of this.cases) {
       if (c.mesh) { c.group.remove(c.mesh); c.mesh.traverse((o) => o.geometry?.dispose()); c.mesh = null; }

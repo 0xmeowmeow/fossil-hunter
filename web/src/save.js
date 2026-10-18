@@ -61,15 +61,64 @@ export async function saveProfile(p) {
 export async function endDay() {
   const { dayResult } = await import('./economy.js');
   const p = await profile();
-  const shown = (await listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum');
+  const shown = (await listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum' && !it.loanedTo);
   const r = dayResult(p, shown);
   p.funds = Math.round((p.funds + r.earned) * 100) / 100;
   p.rep = (p.rep ?? 0) + r.repGain;
   p.stock = r.stock;
   p.day++;
   p.lastDay = r;
+  // The board turns over and loans come home.
+  const { refreshBoard, returnLoans } = await import('./contracts.js');
+  r.expired = refreshBoard(p).expired;
+  const back = returnLoans(p, await listItems());
+  r.returned = back.map((it) => it.name || it.level);
+  if (back.length) await tx('items', 'readwrite', (s) => back.forEach((it) => s.put(it)));
   await saveProfile(p);
   return r;
+}
+
+// ---- contracts and lots (contracts.js has the rules)
+
+async function levelOf(id) {
+  const { LEVELS, SPECIAL } = await import('./data.js');
+  return LEVELS.find((l) => l.id === id) ?? SPECIAL[id];
+}
+async function addBlocks(ids, extra) {
+  const items = [];
+  for (const id of ids) items.push(newItem(await levelOf(id), Math.floor(Math.random() * 1e6), extra));
+  if (items.length) await tx('items', 'readwrite', (s) => items.forEach((it) => s.put(it)));
+  return items;
+}
+
+/** Take on a contract; any blocks it sends go on the shelf. Returns an error string or null. */
+export async function acceptContract(id) {
+  const C = await import('./contracts.js');
+  const r = C.accept(await profile(), id);
+  if (typeof r === 'string') return r;
+  await addBlocks(r.blocks, { from: C.findContract(id).from, contract: id });
+  await saveProfile(r.p);
+  return null;
+}
+
+/** Hand the qualifying specimens to the client and take the reward. Returns an error or null. */
+export async function deliverContract(id) {
+  const C = await import('./contracts.js');
+  const r = C.deliver(await profile(), id, await listItems());
+  if (typeof r === 'string') return r;
+  await tx('items', 'readwrite', (s) => r.items.forEach((it) => s.put(it)));
+  await saveProfile(r.p);
+  return null;
+}
+
+/** Buy a lot off the noticeboard; its blocks go on the shelf. Returns an error or null. */
+export async function buyLot(id) {
+  const C = await import('./contracts.js');
+  const r = C.buyLot(await profile(), id);
+  if (typeof r === 'string') return r;
+  await addBlocks(r.blocks, { from: r.lot.title.split(':')[0].toLowerCase(), lot: id });
+  await saveProfile(r.p);
+  return null;
 }
 
 // ---- storeroom
@@ -94,8 +143,16 @@ export function newItem(level, seed, extra = {}) {
 /** First visit: a career begins with a few blocks on the storeroom shelf. */
 export async function ensureCareer(LEVELS) {
   const p = await profile();
-  if (p.started) return p;
+  if (p.started) {
+    // Careers from before the board existed get one now.
+    if (p.boardDay === undefined) {
+      (await import('./contracts.js')).refreshBoard(p);
+      await saveProfile(p);
+    }
+    return p;
+  }
   p.started = Date.now();
+  (await import('./contracts.js')).refreshBoard(p);
   const starters = ['wheeler', 'beecher', 'calvert', 'cincinnati']
     .map((id) => LEVELS.find((l) => l.id === id)).filter(Boolean)
     .map((lv) => newItem(lv, Math.floor(Math.random() * 1e6), { from: 'the museum you inherited' }));

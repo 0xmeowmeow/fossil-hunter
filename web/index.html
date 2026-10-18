@@ -209,6 +209,13 @@
   .shelf .blk .bar i { display: block; height: 100%; background: var(--brass); border-radius: 2px; }
   .shelf .blk .row { display: flex; gap: 6px; margin-top: 4px; }
   .shelf .blk .row button { padding: 6px 11px; font-size: 13px; }
+  .shelf .blk.gone { opacity: .55; }
+  .shelf .blk.contract { background: rgba(232,224,204,.045); border-style: dashed; }
+  .shelf .blk.contract.on { border-style: solid; border-color: rgba(217,169,78,.45); }
+  .shelf .blk.notice { background: rgba(255,255,255,.035); transform: rotate(-.25deg); }
+  .shelf .blk.notice:nth-child(2n) { transform: rotate(.3deg); }
+  .shelf .blk .tip { font-size: 13px; color: var(--muted); border-left: 2px solid var(--brass); padding-left: 8px; }
+  .shelf .blk .tag { color: var(--brass2); }
   .opts { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 22px 0; color: var(--muted); }
   .opts input { accent-color: var(--brass); }
   details { margin-top: 14px; color: #cfc4ae; border-top: 1px solid var(--line); padding-top: 12px; }

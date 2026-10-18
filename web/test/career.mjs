@@ -31,7 +31,7 @@ await p.click('#btnPack');
 await p.waitForFunction(() => !document.getElementById('menu').classList.contains('hidden'), null, { timeout: 15000 });
 await p.waitForTimeout(800);
 await p.screenshot({ path: `${out}/shelf.png` });
-const card = await p.$eval('#career .blk', (el) => el.textContent);
+const card = await p.$eval('#career [data-go]', (el) => el.closest('.blk').textContent);
 console.log('first card after packing up:', card.replace(/\s+/g, ' ').slice(0, 160));
 console.log('day', await p.$eval('#career .museum b', (el) => el.textContent));
 await p.click('#career [data-go]');

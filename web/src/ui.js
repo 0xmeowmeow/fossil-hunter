@@ -241,6 +241,69 @@ export class UI {
   }
 
   /** Day, funds, reputation, knowledge, and the storeroom shelf. */
+  /** The contracts clipboard and the lots noticeboard, as storeroom HTML. */
+  async _noticeboard(p, items, lvOf) {
+    const C = await import('./contracts.js');
+    const name = (lv) => [].concat(lv).map((id) => {
+      const l = lvOf({ level: id, special: id === 'ridge' });
+      return l ? `${l.title.toLowerCase().replace(/^a parcel of /, '')} (${l.place.split(', ').slice(-1)[0]})` : id;
+    }).join(' or ');
+    let html = `<h3 class="sub">Contracts</h3>`;
+    const mine = p.contracts ?? [];
+    if (mine.length) {
+      html += `<div class="shelf">`;
+      for (const a of mine) {
+        const c = C.findContract(a.id);
+        if (!c) continue;
+        const give = C.deliverable(c, items);
+        const n = c.goal.count ?? 1, have = items.filter((it) => C.qualifies(c, it)).length;
+        const near = items.map((it) => [it, C.shortfall(c, it)]).filter(([, f]) => f);
+        const left = a.due - p.day;
+        html += `<div class="blk contract on"><div class="cat">${esc(c.from)} · ${left <= 0 ? 'due today' : `${left} day${left === 1 ? '' : 's'} left`}</div>` +
+          `<div class="sp">${esc(c.title)}</div><div class="fine">${esc(C.goalText(c, name))}${c.loan ? ' (a loan: it comes back)' : ''}.</div>` +
+          `<div class="fine">Pays ${C.rewardText(c.reward)}.</div>` +
+          (n > 1 ? `<div class="fine">You have ${have} of ${n}.</div><div class="bar"><i style="width:${Math.min(100, (100 * have) / n)}%"></i></div>` : '') +
+          (!give && near.length ? `<div class="fine">Close: ${near.slice(0, 2).map(([it, f]) => `<i>${esc(it.name || 'a specimen')}</i> (${esc(f)})`).join('; ')}.</div>` : '') +
+          `<div class="tip">${esc(c.tip)}</div>` +
+          `<div class="row">${give ? `<button class="on" data-deliver="${c.id}">${c.loan ? 'Lend' : 'Deliver'} ${give.length > 1 ? `${give.length} specimens` : `<i>${esc(give[0].name || 'specimen')}</i>`}</button>` : `<button disabled>Not ready yet</button>`}</div></div>`;
+      }
+      html += `</div>`;
+    }
+    const offers = p.offers ?? [];
+    if (offers.length) {
+      html += `<p class="fine">${mine.length ? 'Also offered' : 'Offered to you'} (each offer stays up a few days):</p><div class="shelf">`;
+      for (const o of offers) {
+        const c = C.findContract(o.id);
+        if (!c) continue;
+        html += `<div class="blk contract"><div class="cat">${esc(c.from)}</div><div class="sp">${esc(c.title)}</div>` +
+          `<div class="fine">“${esc(c.text)}”</div><div class="fine">${esc(C.goalText(c, name))}. ${c.days} days.${c.supply ? ` They send the ${c.supply.length > 1 ? 'blocks' : 'block'}.` : ' Source the rock yourself.'}</div>` +
+          `<div class="fine">Pays <b>${C.rewardText(c.reward)}</b>.</div>` +
+          `<div class="row"><button data-take="${c.id}" ${mine.length >= 3 ? 'disabled title="Three contracts at a time"' : ''}>Take it on</button></div></div>`;
+      }
+      html += `</div>`;
+    } else if (!mine.length) html += `<p class="fine">No contracts on offer today. New ones come up as the days go by.</p>`;
+    // The noticeboard.
+    const lots = p.lots ?? [];
+    html += `<h3 class="sub">Noticeboard: rock for sale</h3>`;
+    if (!lots.length) html += `<p class="fine">Nothing on the noticeboard today.</p>`;
+    else {
+      html += `<div class="shelf">`;
+      for (const n of lots) {
+        const l = C.findLot(n.id);
+        if (!l) continue;
+        const lvs = l.blocks.map((id) => lvOf({ level: id, special: id === 'ridge' })).filter(Boolean);
+        const hard = Math.max(...lvs.map((lv) => lv.difficulty));
+        const left = n.until - p.day;
+        html += `<div class="blk notice"><div class="cat">${'●'.repeat(hard)}${'○'.repeat(5 - hard)} · ${left <= 1 ? 'last day' : `${left} days left`}</div>` +
+          `<div class="sp">${esc(l.title)}</div><div class="fine">${esc(l.text)}</div>` +
+          `<div class="fine">${l.blocks.length} block${l.blocks.length === 1 ? '' : 's'}: ${[...new Set(lvs.map((lv) => esc(lv.place)))].join('; ')}.</div>` +
+          `<div class="row"><button data-lot="${l.id}" ${p.funds < n.price ? 'disabled' : ''}>Buy for $${n.price}</button></div></div>`;
+      }
+      html += `</div>`;
+    }
+    return html;
+  }
+
   async renderCareer() {
     const box = $('career');
     if (!box) return;
@@ -267,13 +330,16 @@ export class UI {
           : !y.visitors ? ''
           : Object.values(y.stock ?? {}).some((n) => n > 0) ? ' Nobody bought anything from the gift shop.'
           : ' The gift shop had nothing to sell: stock it below.') +
-        (y.star ? ` Everyone wanted to see the <i>${esc(y.star)}</i>.` : ' With nothing on display, there was little to see.') + `</p></div>`;
+        (y.star ? ` Everyone wanted to see the <i>${esc(y.star)}</i>.` : ' With nothing on display, there was little to see.') +
+        (y.returned?.length ? ` Back from loan: <i>${y.returned.map(esc).join(', ')}</i>.` : '') +
+        (y.expired?.length ? ` ${y.expired.length === 1 ? 'A contract' : `${y.expired.length} contracts`} ran out of time (−${2 * y.expired.length} reputation).` : '') + `</p></div>`;
     }
     html += `<div class="museum"><div><b>Day ${p.day}</b>of your career</div><div><b>$${Math.round(p.funds)}</b>funds</div>` +
       `<div><b>${p.rep}</b>reputation</div><div><b>${p.knowledge}</b>knowledge</div>` +
       `<div><b>${done.length}</b>prepared · ${shown} on display</div></div>`;
     html += `<div class="row" style="margin:-6px 0 16px"><button id="btnMuseum" class="on">Visit your museum</button></div>`;
-    html += `<div class="shelf">`;
+    html += await this._noticeboard(p, items, lvOf);
+    html += `<h3 class="sub">Storeroom shelf</h3><div class="shelf">`;
     for (const it of shelf) {
       const lv = lvOf(it);
       if (!lv) continue;
@@ -283,6 +349,7 @@ export class UI {
         (it.status === 'working'
           ? `<div class="fine">${pct}% exposed · ${(it.integrity * 100).toFixed(1)}% integrity · ${Math.round(it.minutes)} min so far</div><div class="bar"><i style="width:${pct}%"></i></div>`
           : `<div class="fine">${it.from ? `From ${esc(it.from)}. ` : ''}Unopened.</div>`) +
+        (it.contract ? `<div class="fine tag">For a contract</div>` : '') +
         `<div class="row"><button class="on" data-go="${it.id}">${it.status === 'working' ? 'Continue' : 'Prepare it'}</button></div></div>`;
     }
     if (!shelf.length) html += `<p class="fine">The shelf is empty. Open a drawer below, or check the mail.</p>`;
@@ -293,9 +360,12 @@ export class UI {
       for (const it of done.sort((a, b) => (b.value ?? 0) - (a.value ?? 0))) {
         const lv = lvOf(it);
         const on = it.where === 'museum';
-        html += `<div class="blk"><div class="cat">${esc(lv?.place ?? '')}</div><div class="sp"><i>${esc(it.name || lv?.title || 'Specimen')}</i></div>` +
-          `<div class="fine">Valued at $${it.value ?? 0}${it.where === 'sell' ? ' · sold' : ''}</div>` +
-          (it.where === 'sell' ? '' : `<div class="row"><button data-show="${it.id}" class="${on ? '' : 'on'}">${on ? 'Take off display' : 'Put on display'}</button></div>`) + `</div>`;
+        const gone = it.where === 'sell' || it.where === 'delivered';
+        const state = it.where === 'sell' ? ' · sold' : it.where === 'delivered' ? ` · delivered to ${esc(it.deliveredTo ?? 'a client')}`
+          : it.loanedTo ? ` · on loan to ${esc(it.loanedTo.who)} until day ${it.loanedTo.back}` : '';
+        html += `<div class="blk${gone ? ' gone' : ''}"><div class="cat">${esc(lv?.place ?? '')}</div><div class="sp"><i>${esc(it.name || lv?.title || 'Specimen')}</i></div>` +
+          `<div class="fine">Valued at $${it.value ?? 0} · ${Math.floor((it.exposure ?? 0) * 100)}% exposed · ${((it.integrity ?? 0) * 100).toFixed(0)}% integrity${it.mounted ? ' · mounted' : ''}${state}</div>` +
+          (gone || it.loanedTo ? '' : `<div class="row"><button data-show="${it.id}" class="${on ? '' : 'on'}">${on ? 'Take off display' : 'Put on display'}</button></div>`) + `</div>`;
       }
       html += `</div>`;
     }
@@ -309,6 +379,18 @@ export class UI {
     html += `</div>`;
     box.innerHTML = html;
     for (const b of box.querySelectorAll('[data-go]')) b.onclick = () => this.resume(b.dataset.go);
+    const act = (sel, key, fn) => {
+      for (const b of box.querySelectorAll(sel)) b.onclick = async () => {
+        b.disabled = true;
+        const err = await fn(b.dataset[key]);
+        if (err) this.toast(err);
+        import('./telemetry.js').then((t) => t.track(key, b.dataset[key], { ok: !err }));
+        this.renderCareer();
+      };
+    };
+    act('[data-take]', 'take', save.acceptContract);
+    act('[data-deliver]', 'deliver', save.deliverContract);
+    act('[data-lot]', 'lot', save.buyLot);
     $('btnMuseum').onclick = () => this.visitMuseum();
     for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {
       const it = await save.getItem(b.dataset.show);
@@ -630,7 +712,8 @@ export class UI {
         const sell = document.querySelector('#where button[data-w="sell"] small');
         if (sell) sell.textContent = `+$${g.value}`;
       }
-      game.bakeDisplay(); // the museum shows the mounted shape
+      if (game.item) Object.assign(game.item, { mounted: true, value: g.value });
+      game.bakeDisplay(); // the museum shows the mounted shape (and saves the item)
       import('./telemetry.js').then((t) => t.track('mounted', game.level.id, { shape: r.shape, base: r.base, rough: +r.rough.toFixed(2), trimmed: +r.trimmed.toFixed(2) }));
       $('cBench').outerHTML = `<div class="feat"><span>Mounted: ${esc(r.text)}${g.mounted ? ' · +8% presentation' : ''}</span></div>`;
       back();
@@ -649,7 +732,19 @@ export class UI {
       if (game.item) {
         game.item.where = where;
         game.item.name = `${card.genus} ${card.species}`;
+        game.item.value = g.value;
+        game.item.mounted = !!g.mounted;
         await save.putItem(game.item);
+        // Does it answer a contract? Say so; delivering is a choice made in the storeroom.
+        if (where !== 'sell') {
+          const C = await import('./contracts.js');
+          const pr = await save.profile();
+          const hit = (pr.contracts ?? []).map((a) => C.findContract(a.id)).find((c) => c && C.qualifies(c, game.item));
+          const miss = !hit && (pr.contracts ?? []).map((a) => C.findContract(a.id)).map((c) => c && [c, C.shortfall(c, game.item)]).find((x) => x?.[1]);
+          const line = hit ? `It meets the contract from <b>${esc(hit.from)}</b>: deliver it from the storeroom whenever you're ready.`
+            : miss ? `Not quite enough for ${esc(miss[0].from)}: ${esc(miss[1])}.` : '';
+          if (line) $('where').insertAdjacentHTML('afterbegin', `<p class="fine" style="margin:6px 0 0">${line}</p>`);
+        }
       }
       if (where === 'sell') {
         const p = await save.profile();
