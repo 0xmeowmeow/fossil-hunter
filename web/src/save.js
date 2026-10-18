@@ -33,7 +33,8 @@ async function tx(store, mode, fn) {
   return new Promise((res, rej) => {
     const t = d.transaction(store, mode), s = t.objectStore(store);
     const out = fn(s);
-    t.oncomplete = () => res(out?.result ?? out);
+    // A request resolves to its result, even when that's undefined (a missing key).
+    t.oncomplete = () => res(out instanceof IDBRequest ? out.result : out);
     t.onerror = () => rej(t.error);
   });
 }
@@ -63,6 +64,15 @@ export async function endDay() {
   const p = await profile();
   const shown = (await listItems()).filter((it) => it.status === 'prepared' && it.where === 'museum' && !it.loanedTo);
   const r = dayResult(p, shown);
+  // A school group may book the tour.
+  const T = await import('./tours.js');
+  const t = tourStops(p, shown);
+  const school = t.length ? T.schoolVisit(T.rate(t).stars, p.rep ?? 0) : null;
+  if (school) {
+    r.school = { ...school, tour: p.tour.name || 'your tour' };
+    r.earned += school.fee;
+    r.repGain += school.rep;
+  }
   p.funds = Math.round((p.funds + r.earned) * 100) / 100;
   p.rep = (p.rep ?? 0) + r.repGain;
   p.stock = r.stock;
@@ -76,6 +86,19 @@ export async function endDay() {
   if (back.length) await tx('items', 'readwrite', (s) => back.forEach((it) => s.put(it)));
   await saveProfile(p);
   return r;
+}
+
+/** The tour's stops that are still on display, as [{ item, card }]. */
+export function tourStops(p, shown) {
+  const byId = new Map(shown.map((it) => [it.id, it]));
+  return (p.tour?.stops ?? []).filter((s) => byId.has(s.id)).map((s) => ({ item: byId.get(s.id), card: s.card ?? '' }));
+}
+
+/** Change the tour (name and stops). */
+export async function saveTour(tour) {
+  const p = await profile();
+  p.tour = tour;
+  await saveProfile(p);
 }
 
 // ---- contracts and lots (contracts.js has the rules)

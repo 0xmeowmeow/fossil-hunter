@@ -244,6 +244,68 @@ export class UI {
   }
 
   /** Day, funds, reputation, knowledge, and the storeroom shelf. */
+  /** The tour editor: a route through the cases, a card at each stop, and its rating. */
+  async _tourHtml(p, done, lvOf) {
+    const T = await import('./tours.js');
+    const shown = done.filter((it) => it.where === 'museum' && !it.loanedTo);
+    let html = `<h3 class="sub">Your tour</h3>`;
+    if (shown.length < T.MIN_STOPS) return html + `<p class="fine">Put at least ${T.MIN_STOPS} specimens on display to plan a tour. Good tours bring school groups.</p>`;
+    const tour = p.tour ?? { name: '', stops: [] };
+    const stops = save.tourStops(p, shown);
+    html += `<p class="fine">A route through your cases, with a card at each stop. School groups book good tours: tell a story through time, show a variety of life, and say something at every stop.</p>` +
+      `<input type="text" id="tourName" maxlength="60" placeholder="Name your tour (e.g. Half a billion years in six cases)" value="${esc(tour.name ?? '')}">` +
+      `<ol class="tour">`;
+    stops.forEach((s, i) => {
+      const lv = lvOf(s.item), age = T.ageOf(s.item.level);
+      html += `<li><div class="hd"><b><i>${esc(s.item.name || lv?.title || 'Specimen')}</i></b><span class="fine">${esc(lv?.place ?? '')}${age && (p.science ?? []).includes('stratigraphy') ? ` · ~${age} Myr` : ''}</span>` +
+        `<span class="ctl"><button data-mv="${i}:-1" ${i ? '' : 'disabled'}>↑</button><button data-mv="${i}:1" ${i < stops.length - 1 ? '' : 'disabled'}>↓</button><button data-drop="${i}">Remove</button></span></div>` +
+        `<textarea data-card="${i}" maxlength="400" rows="2" placeholder="What should visitors notice here? A sentence or two.">${esc(s.card)}</textarea></li>`;
+    });
+    html += `</ol>`;
+    const rest = shown.filter((it) => !stops.some((s) => s.item.id === it.id));
+    if (rest.length && stops.length < T.MAX_STOPS) html += `<div class="row addstops">${rest.map((it) => `<button data-addstop="${it.id}">+ ${esc(it.name || lvOf(it)?.title || 'Specimen')}</button>`).join('')}</div>`;
+    html += `<div id="tourRate" class="tourrate"></div>`;
+    return html;
+  }
+
+  _bindTour(box, p, done) {
+    if (!$('tourName')) return;
+    const shown = done.filter((it) => it.where === 'museum' && !it.loanedTo);
+    p.tour ??= { name: '', stops: [] };
+    const tour = p.tour;
+    // Keep only stops still on display, so indices match what's drawn.
+    tour.stops = tour.stops.filter((s) => shown.some((it) => it.id === s.id));
+    const rateNow = async () => {
+      const T = await import('./tours.js');
+      const r = T.rate(save.tourStops(p, shown));
+      $('tourRate').innerHTML = (r.stars ? `<div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</div>` : '') +
+        `<ul>${r.notes.map(([t, good]) => `<li class="${good ? 'good' : ''}">${esc(t)}</li>`).join('')}</ul>`;
+    };
+    let timer;
+    const store = (redraw) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => save.saveTour(tour), 400);
+      if (redraw) save.saveTour(tour).then(() => this.renderCareer());
+      else rateNow();
+    };
+    $('tourName').oninput = (e) => { tour.name = e.target.value; store(false); };
+    for (const t of box.querySelectorAll('[data-card]')) t.oninput = () => { tour.stops[+t.dataset.card].card = t.value; store(false); };
+    for (const b of box.querySelectorAll('[data-mv]')) b.onclick = () => {
+      const [i, d] = b.dataset.mv.split(':').map(Number);
+      [tour.stops[i], tour.stops[i + d]] = [tour.stops[i + d], tour.stops[i]];
+      store(true);
+    };
+    for (const b of box.querySelectorAll('[data-drop]')) b.onclick = () => { tour.stops.splice(+b.dataset.drop, 1); store(true); };
+    for (const b of box.querySelectorAll('[data-addstop]')) b.onclick = async () => {
+      const it = shown.find((x) => x.id === b.dataset.addstop);
+      const { suggestCard } = await import('./tours.js');
+      const { known } = await import('./science.js');
+      tour.stops.push({ id: it.id, card: suggestCard(it, LEVELS.find((l) => l.id === it.level) ?? SPECIAL[it.level], known(p)) });
+      store(true);
+    };
+    rateNow();
+  }
+
   /** The science track, as storeroom HTML: three branches of ideas bought with knowledge. */
   async _science(p) {
     const S = await import('./science.js');
@@ -352,6 +414,7 @@ export class UI {
           : Object.values(y.stock ?? {}).some((n) => n > 0) ? ' Nobody bought anything from the gift shop.'
           : ' The gift shop had nothing to sell: stock it below.') +
         (y.star ? ` Everyone wanted to see the <i>${esc(y.star)}</i>.` : ' With nothing on display, there was little to see.') +
+        (y.school ? ` A school group of <b>${y.school.students}</b> took “${esc(y.school.tour)}” ($${y.school.fee}, +${y.school.rep} reputation).` : '') +
         (y.returned?.length ? ` Back from loan: <i>${y.returned.map(esc).join(', ')}</i>.` : '') +
         (y.expired?.length ? ` ${y.expired.length === 1 ? 'A contract' : `${y.expired.length} contracts`} ran out of time (−${2 * y.expired.length} reputation).` : '') + `</p></div>`;
     }
@@ -390,6 +453,7 @@ export class UI {
       }
       html += `</div>`;
     }
+    html += await this._tourHtml(p, done, lvOf);
     html += await this._science(p);
     // The gift shop: junk in bulk, sold at a markup to whoever comes in.
     html += `<h3 class="sub">Gift shop</h3><p class="fine">Bought in bulk, sold to visitors. Visitors come to see the specimens on display; the shop just makes them pay twice.</p><div class="shelf">`;
@@ -414,6 +478,7 @@ export class UI {
     act('[data-deliver]', 'deliver', save.deliverContract);
     act('[data-lot]', 'lot', save.buyLot);
     act('[data-learn]', 'learn', save.learnNode);
+    this._bindTour(box, p, done);
     $('btnMuseum').onclick = () => this.visitMuseum();
     for (const b of box.querySelectorAll('[data-show]')) b.onclick = async () => {
       const it = await save.getItem(b.dataset.show);
@@ -444,6 +509,30 @@ export class UI {
     $('museumHud').classList.remove('hidden');
     const n = await m.enter();
     $('museumInfo').textContent = n ? `${n} specimen${n === 1 ? '' : 's'} on display` : 'Nothing on display yet: finish a specimen and choose "Display it in my museum".';
+    // The tour, if there's one to walk.
+    const stops = m.tour ?? [];
+    $('btnTour').classList.toggle('hidden', stops.length < 3);
+    $('tourCard').classList.add('hidden');
+    const p = await save.profile();
+    let at = -1;
+    const show = (i) => {
+      at = i;
+      if (i >= stops.length) return end();
+      const s = stops[i], lv = LEVELS.find((l) => l.id === s.item.level) ?? SPECIAL[s.item.level];
+      m.walkToItem(s.item.id);
+      $('tcCat').textContent = `${p.tour?.name || 'Your tour'} · stop ${i + 1} of ${stops.length}`;
+      $('tcName').textContent = s.item.name || lv?.title || 'Specimen';
+      $('tcText').textContent = s.card || 'No card here yet: write one in the storeroom.';
+      $('tcNext').textContent = i === stops.length - 1 ? 'Finish' : 'Next stop';
+      $('tourCard').classList.remove('hidden');
+    };
+    const end = () => {
+      $('tourCard').classList.add('hidden');
+      $('btnTour').classList.remove('hidden');
+    };
+    $('btnTour').onclick = () => { $('btnTour').classList.add('hidden'); show(0); };
+    $('tcNext').onclick = () => show(at + 1);
+    $('tcEnd').onclick = end;
     import('./telemetry.js').then((t) => t.track('museum_visit', '', { n }));
   }
 

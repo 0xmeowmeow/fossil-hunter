@@ -66,6 +66,28 @@ function labelTexture(lines) {
   return t;
 }
 
+/** A brass disc with a stop number. */
+function stopTexture(n) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(54, 50, 10, 64, 64, 64);
+  gr.addColorStop(0, '#e9c977');
+  gr.addColorStop(1, '#8a6a2c');
+  g.fillStyle = gr;
+  g.beginPath();
+  g.arc(64, 64, 62, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#2a1e0e';
+  g.font = '700 72px Fraunces, Georgia, serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(String(n), 64, 70);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export class Museum {
   constructor(view, game, ui) {
     this.view = view;
@@ -165,11 +187,13 @@ export class Museum {
     items.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
     for (const c of this.cases) {
       if (c.mesh) { c.group.remove(c.mesh); c.mesh.traverse((o) => o.geometry?.dispose()); c.mesh = null; }
-      if (c.label) { c.group.remove(c.label); c.label = null; }
+      if (c.label) { c.group.remove(c.label); if (c.label.userData.disc) c.group.remove(c.label.userData.disc); c.label = null; }
       c.item = null;
     }
     let i = 0;
-    const sci = known(await save.profile());
+    const prof = await save.profile();
+    const sci = known(prof);
+    const tour = save.tourStops(prof, items);
     for (const it of items) {
       const c = this.cases[i++];
       if (!c) break;
@@ -188,7 +212,17 @@ export class Museum {
       label.rotation.x = -0.25;
       c.group.add(label);
       c.label = label;
+      // A brass stop number on tour cases.
+      const stop = tour.findIndex((s) => s.item.id === it.id);
+      if (stop >= 0) {
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(0.055, 28), new THREE.MeshStandardMaterial({ map: stopTexture(stop + 1), metalness: 0.8, roughness: 0.35 }));
+        disc.position.set(-0.22, 0.84, c.size / 2 + 0.006);
+        disc.rotation.x = -0.25;
+        c.group.add(disc);
+        c.label.userData.disc = disc;
+      }
     }
+    this.tour = tour;
     this.count = items.length;
     return items.length;
   }
@@ -249,6 +283,7 @@ export class Museum {
     this.group.visible = true;
     this.view.showcaseMode(false); // (this shows the bench again, so hide it after)
     this.view.root.visible = false;
+    this._bg ??= this.view.scene.background;
     this.view.scene.background = new THREE.Color(0x2a241e);
     const n = await this._fill();
     if (!this.view.renderer.xr.isPresenting) this._camera();
@@ -260,7 +295,7 @@ export class Museum {
     this.active = false;
     if (this.group) this.group.visible = false;
     this.view.root.visible = true;
-    this.view.scene.background = new THREE.Color(0x17171a);
+    if (this._bg) this.view.scene.background = this._bg;
     this.view.camera.position.set(0, 0, 0);
     this.view._placeCamera();
   }
@@ -305,6 +340,15 @@ export class Museum {
       }
     }
     return null;
+  }
+
+  /** Walk up to the case holding this item (a tour stop). */
+  walkToItem(id) {
+    const c = this.cases.find((x) => x.item?.id === id);
+    if (!c) return false;
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(c.group.quaternion);
+    this._walk(c.group.position.clone().addScaledVector(front, c.size / 2 + 0.5).setY(EYE - 0.2), c.group.position.clone().setY(1.06));
+    return true;
   }
 
   _walk(to, lookAt) {

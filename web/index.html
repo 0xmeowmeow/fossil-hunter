@@ -209,6 +209,13 @@
   #museumHud .mtop span { font: 12px var(--mono); color: var(--muted); }
   #museumHud .mhint { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 13px; color: var(--muted); white-space: nowrap; }
   #museumHud #btnMuseumBack { top: 14px; right: 14px; }
+  #museumHud #btnTour { top: 60px; right: 14px; }
+  #museumHud #tourCard { left: 50%; bottom: 60px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); padding: 14px 18px; background: #efe5cd; color: #2a2118; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  #museumHud #tourCard .cat { font: 11px var(--mono); letter-spacing: .08em; color: #6b5a44; text-transform: uppercase; }
+  #museumHud #tourCard b { display: block; font: italic 700 22px var(--serif); margin: 2px 0 6px; }
+  #museumHud #tourCard p { margin: 0 0 10px; font: 15px/1.45 var(--serif); }
+  #museumHud #tourCard.hidden, #museumHud #btnTour.hidden { display: none; }
+  #museumHud #tourCard button:not(.on) { color: #2a2118; border-color: rgba(42,33,24,.35); background: transparent; }
   @media (max-width: 700px) { #museumHud .mhint { white-space: normal; width: 90%; text-align: center; } }
   .loop { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
   .loop input { flex: 1 1 200px; min-width: 0; padding: 11px 12px; background: #211e1a; color: var(--text); border: 1px solid var(--line); border-radius: 9px; font: inherit; -webkit-user-select: text; user-select: text; }
@@ -227,6 +234,19 @@
   .shelf .blk .row { display: flex; gap: 6px; margin-top: 4px; }
   .shelf .blk .row button { padding: 6px 11px; font-size: 13px; }
   .shelf .blk.gone { opacity: .55; }
+  ol.tour { margin: 10px 0; padding-left: 22px; }
+  ol.tour li { margin-bottom: 10px; }
+  ol.tour .hd { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  ol.tour .hd .ctl { margin-left: auto; display: flex; gap: 4px; }
+  ol.tour .hd .ctl button { padding: 3px 8px; font-size: 12px; }
+  ol.tour textarea { width: 100%; margin-top: 4px; font: 14px var(--sans, Inter, sans-serif); background: rgba(255,255,255,.04); color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; resize: vertical; }
+  #tourName { width: 100%; max-width: 520px; margin: 6px 0 4px; }
+  .addstops { flex-wrap: wrap; gap: 6px; display: flex; margin-bottom: 10px; }
+  .addstops button { padding: 5px 10px; font-size: 13px; }
+  .tourrate { border-left: 2px solid var(--brass); padding-left: 10px; margin-bottom: 18px; }
+  .tourrate .stars { font-size: 20px; color: var(--brass2); letter-spacing: 2px; }
+  .tourrate ul { margin: 4px 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+  .tourrate li.good { color: inherit; }
   .shelf .blk.contract { background: rgba(232,224,204,.045); border-style: dashed; }
   .shelf .blk.contract.on { border-style: solid; border-color: rgba(217,169,78,.45); }
   .shelf .blk.notice { background: rgba(255,255,255,.035); transform: rotate(-.25deg); }
@@ -494,6 +514,9 @@
   <div class="pane mtop"><b>Your museum</b><span id="museumInfo"></span></div>
   <div class="pane mhint">Drag to look round · click a case to walk up to it · click the floor to walk there</div>
   <button id="btnMuseumBack" class="on">Back to the storeroom</button>
+  <button id="btnTour" class="hidden">Walk the tour</button>
+  <div id="tourCard" class="pane hidden"><div class="cat" id="tcCat"></div><b id="tcName"></b><p id="tcText"></p>
+    <div class="row"><button id="tcNext" class="on">Next stop</button><button id="tcEnd">End the tour</button></div></div>
 </div>
 
 <div id="celebrate" class="hidden">

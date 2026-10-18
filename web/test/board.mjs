@@ -61,6 +61,14 @@ console.log('delivered', JSON.stringify(s3));
 await p.screenshot({ path: `${out}/delivered.png`, fullPage: true });
 // Science: the delivery paid 3 knowledge; learn the identification tests, then the notebook
 // should be on a Wheeler bench (which doesn't have it by default).
+// (Contracts pay different knowledge; make sure there's enough for the first idea.)
+await p.evaluate(async () => {
+  const s = await import('./src/save.js');
+  const pr = await s.profile();
+  pr.knowledge = Math.max(pr.knowledge, 3);
+  await s.saveProfile(pr);
+  await window.fh.game.ui.renderCareer();
+});
 await p.waitForSelector('#career [data-learn="notebook"].on', { timeout: 30000 });
 await p.click('#career [data-learn="notebook"]');
 await p.waitForSelector('#career .node.have', { timeout: 30000 });
